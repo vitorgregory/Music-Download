@@ -1,12 +1,11 @@
 import subprocess
 import threading
 import os
-import json
-import base64
 import re
 from .utils import strip_ansi, analyze_label_metadata
 
 class ProcessManager:
+    """Classe base para gerenciar processos em background"""
     def __init__(self):
         self.process = None
         self.running = False
@@ -16,12 +15,10 @@ class ProcessManager:
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     def _log(self, message):
-        """Adiciona log com print no console"""
         self.logs.append(message)
-        print(message) # Debug docker logs
+        print(message)  # Exibe no console do Docker também
 
     def stop(self):
-        """Encerra o processo"""
         if self.process:
             try:
                 self.process.terminate()
@@ -33,7 +30,6 @@ class ProcessManager:
         self._log(">>> Processo encerrado <<<")
 
     def write_input(self, text):
-        """Envia texto para o stdin do processo"""
         if self.process and self.running:
             try:
                 self.process.stdin.write(f"{text}\n")
@@ -46,23 +42,24 @@ class ProcessManager:
         return False
 
     def close_stdin(self):
-        """Envia sinal de fim de input (Skip)"""
+        """Simula EOF para pular etapas (Skip)"""
         if self.process and self.running:
             try:
                 self.process.stdin.close()
-                self._log(">>> Input fechado (Skip/Finish) <<<")
+                self._log(">>> Input encerrado (Skip) <<<")
                 self.needs_input = False
                 return True
             except: pass
         return False
 
     def get_status(self):
-        # Verifica se morreu
+        # Verifica se o processo morreu inesperadamente
         if self.process and self.process.poll() is not None:
             self.running = False
+            
         return {
             "running": self.running,
-            "logs": self.logs[-200:], # Retorna últimos 200 logs
+            "logs": self.logs[-200:],  # Retorna apenas os últimos 200 logs
             "needs_input": self.needs_input,
             "options": self.input_options
         }
@@ -79,7 +76,7 @@ class WrapperManager(ProcessManager):
         cmd = [wrapper_path, "-L", f"{email}:{password}"]
         
         try:
-            # TERM=dumb evita excesso de caracteres de controle
+            # TERM=dumb evita caracteres de controle excessivos
             env = os.environ.copy()
             env["TERM"] = "dumb"
             
@@ -90,7 +87,7 @@ class WrapperManager(ProcessManager):
             )
             self.running = True
             self.needs_2fa = False
-            self.logs = [] # Limpa logs antigos ao iniciar
+            self.logs = [] 
             
             threading.Thread(target=self._stream_logs, daemon=True).start()
             return True
@@ -149,11 +146,13 @@ class DownloaderManager(ProcessManager):
 
     def _stream_logs(self):
         selection_keywords = ["Select:", "Enter choice", "Input:", "(default: All)", "Choice:", "selection:", "Select options"]
-        log_buffer = [] # Buffer local para parsing
+        log_buffer = []
 
-        def parse_table_options(buffer):
+        def parse_options(buffer):
             options = []
+            # Regex para Tabela com Data
             regex_table = r"^\s*\|\s*(\d+)\s*\|\s*([^\|]+)\s*\|\s*([^\|]+)"
+            # Regex para Lista Simples
             regex_list = r"(?:^|\s|\[\w+\]\s+)(\d+)\s*[\.\:\-\)\]]\s+(.+)$"
             
             for line in reversed(buffer[-200:]):
@@ -161,14 +160,12 @@ class DownloaderManager(ProcessManager):
                 if not clean or any(k.lower() in clean.lower() for k in selection_keywords): continue
                 if "+---" in clean or "ALBUM NAME" in clean: continue
                 
-                # Tabela com Data
                 m = re.search(regex_table, clean)
                 if m:
                     meta = analyze_label_metadata(m.group(2).strip())
                     options.insert(0, {"id": m.group(1), "label": meta['label'], "type": meta['type'], "tags": meta['tags'], "date": m.group(3).strip()})
                     continue
                 
-                # Lista Simples
                 m = re.search(regex_list, clean)
                 if m:
                     meta = analyze_label_metadata(m.group(2).strip())
@@ -183,7 +180,6 @@ class DownloaderManager(ProcessManager):
                 if not char: break
                 buffer_str += char
                 
-                # Processa linha completa ou prompt interativo
                 is_newline = char == '\n'
                 is_prompt = len(buffer_str) > 300 or buffer_str.endswith(": ") or buffer_str.endswith("? ")
                 
@@ -194,17 +190,15 @@ class DownloaderManager(ProcessManager):
                         print(f"[DL] {line}")
                         log_buffer.append(line)
                         
-                        # Verifica se é um pedido de input
                         clean_line = strip_ansi(line)
                         if any(k.lower() in clean_line.lower() for k in selection_keywords):
-                            opts = parse_table_options(log_buffer)
+                            opts = parse_options(log_buffer)
                             self.input_options = opts
                             self.needs_input = True
                             self.logs.append(">>> AGUARDANDO INTERAÇÃO <<<")
                     
                     if is_newline: buffer_str = ""
-                    # Se for prompt, mantemos buffer_str limpo para não duplicar, mas cuidado para não perder input parcial
-                    if is_prompt: buffer_str = ""
+                    if is_prompt: buffer_str = "" # Reset buffer on prompt detection
 
         except Exception as e:
             self.logs.append(f"Erro no stream: {e}")
@@ -212,6 +206,6 @@ class DownloaderManager(ProcessManager):
             self.running = False
             self.logs.append(">>> Processo finalizado <<<")
 
-# Instâncias Globais (Singletons)
+# Instâncias Globais (Singleton)
 wrapper = WrapperManager()
 downloader = DownloaderManager()

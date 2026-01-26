@@ -1,20 +1,13 @@
 from flask import render_template, request, jsonify
 from . import app
 from .process_manager import wrapper, downloader
-from .utils import fetch_metadata, get_config
+from .utils import fetch_metadata, get_config, save_config
 import os
 import json
 import base64
 
-# --- Credenciais Helpers ---
 def get_cred_path(): 
     return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".credentials")
-
-def save_creds(e, p):
-    try:
-        with open(get_cred_path(), 'w') as f: 
-            json.dump({"email": base64.b64encode(e.encode()).decode(), "password": base64.b64encode(p.encode()).decode()}, f)
-    except: pass
 
 def load_creds():
     try:
@@ -24,15 +17,15 @@ def load_creds():
     except: pass
     return None, None
 
-def delete_creds():
-    if os.path.exists(get_cred_path()): os.remove(get_cred_path())
-
-# --- Routes ---
+def save_creds(e, p):
+    try:
+        with open(get_cred_path(), 'w') as f: 
+            json.dump({"email": base64.b64encode(e.encode()).decode(), "password": base64.b64encode(p.encode()).decode()}, f)
+    except: pass
 
 @app.route("/")
 def index():
     creds = load_creds()
-    # Tenta auto-login se tiver credenciais e wrapper parado
     if creds[0] and not wrapper.running:
         wrapper.start(creds[0], creds[1])
     return render_template("index.html")
@@ -41,12 +34,10 @@ def index():
 def get_logs():
     w_status = wrapper.get_status()
     d_status = downloader.get_status()
-    
     return jsonify({
         "wrapper": w_status["logs"],
         "wrapper_running": w_status["running"],
         "wrapper_needs_2fa": wrapper.needs_2fa,
-        
         "downloader": d_status["logs"],
         "download_running": d_status["running"],
         "download_needs_selection": d_status["needs_input"],
@@ -60,7 +51,7 @@ def login_wrapper():
     if wrapper.start(email, password):
         save_creds(email, password)
         return jsonify({"status": "ok"})
-    return jsonify({"status": "error", "msg": "Failed to start wrapper"})
+    return jsonify({"status": "error"})
 
 @app.route("/stop_wrapper", methods=["POST"])
 def stop_wrapper():
@@ -83,15 +74,13 @@ def download():
     link = request.form.get("link")
     special = request.form.get("special_audio") == "true"
     fmt = request.form.get("format")
-    
     args = []
     if special:
         if fmt == "ATMOS": args = ["--atmos"]
         elif fmt == "AAC": args = ["--aac"]
-    
     if downloader.start(link, args):
         return jsonify({"status": "ok"})
-    return jsonify({"status": "error", "msg": "Failed to start download"})
+    return jsonify({"status": "error"})
 
 @app.route("/submit_selection", methods=["POST"])
 def submit_selection():
@@ -110,12 +99,18 @@ def cancel_download():
     downloader.stop()
     return jsonify({"status": "ok"})
 
-# --- Settings & Misc ---
+# --- Configurações ---
 @app.route("/settings")
 def settings(): return render_template("settings.html")
 
 @app.route("/get_config")
 def get_cfg(): return jsonify({"status":"ok", "config": get_config()})
+
+@app.route("/save_config", methods=["POST"])
+def save_cfg():
+    if save_config(request.json):
+        return jsonify({"status":"ok"})
+    return jsonify({"status":"error"})
 
 @app.route("/check_saved_credentials")
 def check_cred():
@@ -124,7 +119,7 @@ def check_cred():
 
 @app.route("/delete_saved_credentials", methods=["POST"])
 def del_cred():
-    delete_creds()
+    if os.path.exists(get_cred_path()): os.remove(get_cred_path())
     return jsonify({"status": "ok"})
 
 @app.route("/get_download_folders")
