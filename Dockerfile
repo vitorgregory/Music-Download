@@ -1,13 +1,12 @@
-# Usamos o Ubuntu 22.04 (Suporte nativo ao GPAC/MP4Box)
+# Usamos o Ubuntu 22.04 (Melhor para Wrapper e Sistema)
 FROM ubuntu:22.04
 
 # Configurações de ambiente
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RUNNING_IN_DOCKER=true
-# Adiciona o novo Go ao PATH do sistema
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# 1. Instalar dependências do sistema
+# 1. Instalar dependências básicas do sistema
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -17,15 +16,25 @@ RUN apt-get update && apt-get install -y \
     unzip \
     gpac \
     ca-certificates \
+    curl \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# 1.5. Instalar Go 1.23.2 Manualmente (Ubuntu repo é muito velho)
+# 1.1. TRUQUE: Instalar libssl1.1 (necessária para o Bento4 funcionar no Ubuntu 22.04)
+# Adicionamos o repositório de segurança do Ubuntu 20.04 temporariamente
+RUN echo "deb http://security.ubuntu.com/ubuntu focal-security main" | tee /etc/apt/sources.list.d/focal-security.list && \
+    apt-get update && \
+    apt-get install -y libssl1.1 && \
+    rm /etc/apt/sources.list.d/focal-security.list && \
+    apt-get update
+
+# 1.5. Instalar Go 1.23.2 Manualmente
 RUN wget https://go.dev/dl/go1.23.2.linux-amd64.tar.gz && \
     rm -rf /usr/local/go && \
     tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz && \
     rm go1.23.2.linux-amd64.tar.gz
 
-# Link simbólico para python -> python3
+# Link simbólico para python
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Diretório de trabalho
@@ -35,7 +44,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# 3. Baixar e configurar Bento4 (CORREÇÃO: Adicionado chmod +x)
+# 3. Baixar e configurar Bento4 (Com chmod e agora com a lib certa no sistema!)
 RUN mkdir -p bento4 && \
     wget -q https://www.bok.net/Bento4/binaries/Bento4-SDK-1-6-0-641.x86_64-unknown-linux.zip -O bento4.zip && \
     unzip -q bento4.zip -d bento4 && \
@@ -54,7 +63,7 @@ RUN mkdir -p wrapper && \
 # 5. Clonar o Downloader
 RUN git clone https://github.com/zhaarey/apple-music-downloader apple-music-downloader
 
-# Copiar o restante do código
+# Copiar o código
 COPY . .
 
 # Expor porta e iniciar
