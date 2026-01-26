@@ -66,3 +66,55 @@ def fetch_metadata(url):
         
         return {"title": title, "image": image, "type": type_str}
     except: return None
+
+def generate_m3u_playlist(base_folder_key):
+    try:
+        config = get_config() # ou get_config_data() dependendo da sua versão
+        if not config: return
+        
+        # Mapeia as chaves de configuração
+        config_key_map = {"alac": "alac-save-folder", "atmos": "atmos-save-folder", "aac": "aac-save-folder"}
+        folder_name = config.get(config_key_map.get(base_folder_key), "")
+        if not folder_name: return
+
+        # Monta o caminho real dentro do container
+        # Adiciona 'downloads/' se não estiver no caminho, pois é onde o volume está montado
+        if not folder_name.startswith("downloads"):
+             folder_name = os.path.join("downloads", os.path.basename(folder_name))
+        
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        search_path = os.path.join(base_dir, "apple-music-downloader", folder_name)
+
+        if not os.path.exists(search_path): return
+
+        # 1. Acha a pasta mais recente modificada (pode ser a do Artista ou da Playlist)
+        subdirs = [os.path.join(search_path, d) for d in os.listdir(search_path) if os.path.isdir(os.path.join(search_path, d))]
+        if not subdirs: return
+        latest_subdir = max(subdirs, key=os.path.getmtime)
+
+        # 2. Busca Recursiva: Procura músicas dentro da pasta recente E das subpastas dela
+        music_files = []
+        target_dir = latest_subdir # Onde vamos salvar o m3u
+
+        # Se a pasta recente tiver subpastas (ex: Apple Music > Playlist X), entra nelas
+        nested_subdirs = [os.path.join(latest_subdir, d) for d in os.listdir(latest_subdir) if os.path.isdir(os.path.join(latest_subdir, d))]
+        if nested_subdirs:
+            # Pega a subpasta mais recente (a playlist real)
+            target_dir = max(nested_subdirs, key=os.path.getmtime)
+        
+        # Lista as músicas
+        files = sorted([f for f in os.listdir(target_dir) if f.lower().endswith(('.m4a', '.flac', '.mp3', '.wav'))])
+        
+        if files:
+            playlist_name = os.path.basename(target_dir)
+            playlist_file = os.path.join(target_dir, f"{playlist_name}.m3u8")
+            
+            with open(playlist_file, "w", encoding="utf-8") as f:
+                f.write("#EXTM3U\n")
+                for file in files: f.write(f"{file}\n")
+            
+            return f"Playlist criada: {playlist_name}.m3u8"
+            
+    except Exception as e: 
+        print(f"Erro M3U: {e}")
+        return None
