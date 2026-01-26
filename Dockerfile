@@ -4,9 +4,10 @@ FROM ubuntu:22.04
 # Configurações de ambiente
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RUNNING_IN_DOCKER=true
+# Adiciona o novo Go ao PATH do sistema
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# 1. Instalar dependências do sistema
+# 1. Instalar dependências do sistema (SEM golang-go do apt)
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -15,8 +16,14 @@ RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     gpac \
-    golang-go \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# 1.5. Instalar Go 1.23.2 Manualmente (Ubuntu repo é muito velho)
+RUN wget https://go.dev/dl/go1.23.2.linux-amd64.tar.gz && \
+    rm -rf /usr/local/go && \
+    tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz && \
+    rm go1.23.2.linux-amd64.tar.gz
 
 # Link simbólico para python -> python3
 RUN ln -s /usr/bin/python3 /usr/bin/python
@@ -24,7 +31,7 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 # Diretório de trabalho
 WORKDIR /app
 
-# 2. Instalar dependências Python (CORRIGIDO: sem --break-system-packages)
+# 2. Instalar dependências Python
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
