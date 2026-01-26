@@ -7,7 +7,7 @@ ENV RUNNING_IN_DOCKER=true
 # Adiciona o novo Go ao PATH do sistema
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# 1. Instalar dependências do sistema (SEM golang-go do apt)
+# 1. Instalar dependências do sistema
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -35,11 +35,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# 3. Baixar e configurar Bento4
+# 3. Baixar e configurar Bento4 (CORREÇÃO: Adicionado chmod +x)
 RUN mkdir -p bento4 && \
     wget -q https://www.bok.net/Bento4/binaries/Bento4-SDK-1-6-0-641.x86_64-unknown-linux.zip -O bento4.zip && \
     unzip -q bento4.zip -d bento4 && \
     rm bento4.zip && \
+    chmod -R +x bento4 && \
     find /app/bento4 -name "mp4decrypt" -type f -exec ln -s {} /usr/local/bin/mp4decrypt \; && \
     find /app/bento4 -name "mp4dump" -type f -exec ln -s {} /usr/local/bin/mp4dump \;
 
