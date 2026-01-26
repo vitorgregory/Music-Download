@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    container_name: apple-music-web
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mapeia a pasta 'downloads' do usuário para dentro do container
+      - ./downloads:/app/apple-music-downloader/downloads
+      # Persiste as credenciais e configurações
+      - ./data:/app/data
+    restart: unless-stopped

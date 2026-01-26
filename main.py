@@ -11,6 +11,10 @@ WRAPPER_DIR = PROJECT_DIR / "wrapper"
 AMD_DIR = PROJECT_DIR / "apple-music-downloader"
 
 def firstsetup():
+  # --- NOVO: Check for Docker environment ---
+    if os.environ.get("RUNNING_IN_DOCKER"):
+        print("INFO: Running in Docker. Skipping system setup steps.")
+        return
     # --- Check for root ---
     if os.geteuid() != 0:
         print("ERROR: This script must be run as root. Exiting.")
