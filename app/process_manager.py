@@ -2,7 +2,9 @@ import subprocess
 import threading
 import os
 import re
-from .utils import strip_ansi, analyze_label_metadata
+import time
+# IMPORTANTE: Importamos a função de playlist aqui
+from .utils import strip_ansi, analyze_label_metadata, generate_m3u_playlist
 
 class ProcessManager:
     """Classe base para gerenciar processos em background"""
@@ -16,7 +18,7 @@ class ProcessManager:
 
     def _log(self, message):
         self.logs.append(message)
-        print(message)  # Exibe no console do Docker também
+        print(message)
 
     def stop(self):
         if self.process:
@@ -42,7 +44,6 @@ class ProcessManager:
         return False
 
     def close_stdin(self):
-        """Simula EOF para pular etapas (Skip)"""
         if self.process and self.running:
             try:
                 self.process.stdin.close()
@@ -53,13 +54,11 @@ class ProcessManager:
         return False
 
     def get_status(self):
-        # Verifica se o processo morreu inesperadamente
         if self.process and self.process.poll() is not None:
             self.running = False
-            
         return {
             "running": self.running,
-            "logs": self.logs[-200:],  # Retorna apenas os últimos 200 logs
+            "logs": self.logs[-200:],
             "needs_input": self.needs_input,
             "options": self.input_options
         }
@@ -76,7 +75,6 @@ class WrapperManager(ProcessManager):
         cmd = [wrapper_path, "-L", f"{email}:{password}"]
         
         try:
-            # TERM=dumb evita caracteres de controle excessivos
             env = os.environ.copy()
             env["TERM"] = "dumb"
             
@@ -121,7 +119,14 @@ class DownloaderManager(ProcessManager):
         
         amd_dir = os.path.join(self.base_dir, "apple-music-downloader")
         cmd = ["go", "run", "main.go"]
-        if args: cmd.extend(args)
+        
+        # --- NOVO: Detecta o formato para usar na playlist depois ---
+        self.current_format = "alac" # Padrão
+        if args: 
+            cmd.extend(args)
+            if "--atmos" in args: self.current_format = "atmos"
+            elif "--aac" in args: self.current_format = "aac"
+            
         cmd.append(link)
         
         try:
@@ -150,9 +155,7 @@ class DownloaderManager(ProcessManager):
 
         def parse_options(buffer):
             options = []
-            # Regex para Tabela com Data
             regex_table = r"^\s*\|\s*(\d+)\s*\|\s*([^\|]+)\s*\|\s*([^\|]+)"
-            # Regex para Lista Simples
             regex_list = r"(?:^|\s|\[\w+\]\s+)(\d+)\s*[\.\:\-\)\]]\s+(.+)$"
             
             for line in reversed(buffer[-200:]):
@@ -198,14 +201,26 @@ class DownloaderManager(ProcessManager):
                             self.logs.append(">>> AGUARDANDO INTERAÇÃO <<<")
                     
                     if is_newline: buffer_str = ""
-                    if is_prompt: buffer_str = "" # Reset buffer on prompt detection
+                    if is_prompt: buffer_str = "" 
 
         except Exception as e:
             self.logs.append(f"Erro no stream: {e}")
         finally:
             self.running = False
             self.logs.append(">>> Processo finalizado <<<")
+            
+            # --- NOVO: GERA A PLAYLIST AGORA ---
+            # Pequeno delay para garantir que o sistema de arquivos liberou a pasta
+            time.sleep(2)
+            try:
+                msg = generate_m3u_playlist(self.current_format)
+                if msg:
+                    self.logs.append(f"✅ {msg}")
+                else:
+                    self.logs.append("ℹ️ Playlist: Nenhuma música encontrada na pasta recente.")
+            except Exception as e:
+                self.logs.append(f"❌ Erro Playlist: {e}")
 
-# Instâncias Globais (Singleton)
+# Instâncias Globais
 wrapper = WrapperManager()
 downloader = DownloaderManager()
