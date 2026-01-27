@@ -3,8 +3,8 @@ import threading
 import os
 import re
 import time
-# IMPORTANTE: Importamos a função de playlist aqui
-from .utils import strip_ansi, analyze_label_metadata, generate_m3u_playlist
+# Adicionei fetch_metadata na importação
+from .utils import strip_ansi, analyze_label_metadata, generate_m3u_playlist, fetch_metadata
 
 class ProcessManager:
     """Classe base para gerenciar processos em background"""
@@ -120,14 +120,25 @@ class DownloaderManager(ProcessManager):
         amd_dir = os.path.join(self.base_dir, "apple-music-downloader")
         cmd = ["go", "run", "main.go"]
         
-        # --- NOVO: Detecta o formato para usar na playlist depois ---
-        self.current_format = "alac" # Padrão
+        self.current_format = "alac"
         if args: 
             cmd.extend(args)
             if "--atmos" in args: self.current_format = "atmos"
             elif "--aac" in args: self.current_format = "aac"
             
         cmd.append(link)
+        
+        # --- NOVO: Detecta se é playlist ANTES de começar ---
+        self.is_playlist = False
+        try:
+            meta = fetch_metadata(link)
+            if meta and meta.get('type') == 'Playlist':
+                self.is_playlist = True
+                print("[INFO] Conteúdo identificado como Playlist. Arquivo m3u8 será gerado.")
+            else:
+                print(f"[INFO] Conteúdo identificado como {meta.get('type') if meta else 'Desconhecido'}. Pular geração de m3u8.")
+        except:
+            pass
         
         try:
             env = os.environ.copy()
@@ -155,7 +166,9 @@ class DownloaderManager(ProcessManager):
 
         def parse_options(buffer):
             options = []
+            # Regex tabela: Pega o ID, Nome e Data
             regex_table = r"^\s*\|\s*(\d+)\s*\|\s*([^\|]+)\s*\|\s*([^\|]+)"
+            # Regex lista simples (raramente tem data, mas tratamos)
             regex_list = r"(?:^|\s|\[\w+\]\s+)(\d+)\s*[\.\:\-\)\]]\s+(.+)$"
             
             for line in reversed(buffer[-200:]):
@@ -163,16 +176,31 @@ class DownloaderManager(ProcessManager):
                 if not clean or any(k.lower() in clean.lower() for k in selection_keywords): continue
                 if "+---" in clean or "ALBUM NAME" in clean: continue
                 
+                # Tenta Tabela (com Data)
                 m = re.search(regex_table, clean)
                 if m:
+                    # m.group(2) é o nome, m.group(3) é a data (Ano-Mes-Dia)
                     meta = analyze_label_metadata(m.group(2).strip())
-                    options.insert(0, {"id": m.group(1), "label": meta['label'], "type": meta['type'], "tags": meta['tags'], "date": m.group(3).strip()})
+                    options.insert(0, {
+                        "id": m.group(1), 
+                        "label": meta['label'], 
+                        "type": meta['type'], 
+                        "tags": meta['tags'], 
+                        "date": m.group(3).strip() # Passa a data bruta para o frontend
+                    })
                     continue
                 
+                # Tenta Lista Simples
                 m = re.search(regex_list, clean)
                 if m:
                     meta = analyze_label_metadata(m.group(2).strip())
-                    options.insert(0, {"id": m.group(1), "label": meta['label'], "type": meta['type'], "tags": meta['tags'], "date": ""})
+                    options.insert(0, {
+                        "id": m.group(1), 
+                        "label": meta['label'], 
+                        "type": meta['type'], 
+                        "tags": meta['tags'], 
+                        "date": ""
+                    })
                 elif len(options) > 0 and "|" not in clean: break
             return options
 
@@ -209,17 +237,20 @@ class DownloaderManager(ProcessManager):
             self.running = False
             self.logs.append(">>> Processo finalizado <<<")
             
-            # --- NOVO: GERA A PLAYLIST AGORA ---
-            # Pequeno delay para garantir que o sistema de arquivos liberou a pasta
-            time.sleep(2)
-            try:
-                msg = generate_m3u_playlist(self.current_format)
-                if msg:
-                    self.logs.append(f"✅ {msg}")
-                else:
-                    self.logs.append("ℹ️ Playlist: Nenhuma música encontrada na pasta recente.")
-            except Exception as e:
-                self.logs.append(f"❌ Erro Playlist: {e}")
+            # --- Lógica de Playlist Condicional ---
+            if self.is_playlist:
+                time.sleep(2)
+                try:
+                    msg = generate_m3u_playlist(self.current_format)
+                    if msg:
+                        self.logs.append(f"✅ {msg}")
+                    else:
+                        self.logs.append("ℹ️ Playlist: Arquivo não gerado (sem arquivos encontrados).")
+                except Exception as e:
+                    self.logs.append(f"❌ Erro Playlist: {e}")
+            else:
+                # Se não for playlist, não faz nada (silencioso) ou avisa no log debug
+                pass
 
 # Instâncias Globais
 wrapper = WrapperManager()
