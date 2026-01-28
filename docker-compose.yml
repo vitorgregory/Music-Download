@@ -1,23 +1,12 @@
 services:
   app:
     build: .
-    container_name: apple-music-web-beta
+    container_name: apple-music-web
     ports:
-      - "5005:5000"
+      - "5000:5000"
     volumes:
-      # --- CORREÇÃO DO ESPELHAMENTO ---
-      # Em vez de substituir a raiz inteira (.:/app),
-      # mapeamos APENAS a pasta de código Python.
-      # Assim, o 'wrapper' e o 'downloader' originais do container são preservados.
-      - ./app:/app/app
-      
-      # Mapeia os Downloads para seu HD
-      - /DATA/.media/Biblioteca/Media/Music:/app/apple-music-downloader/downloads
-      
-      # Mapeia os Dados (Banco de dados e credenciais)
-      - ./app/data:/app/app/data
-      
-    environment:
-      - FLASK_DEBUG=1
-      
+      # Mapeia a pasta 'downloads' do usuário para dentro do container
+      - ./downloads:/app/apple-music-downloader/downloads
+      # Persiste as credenciais e configurações
+      - ./data:/app/data
     restart: unless-stopped

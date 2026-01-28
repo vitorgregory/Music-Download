@@ -1,77 +1,93 @@
-:root {
-    --bg-dark: #121212;
-    --bg-card: #1e1e1e;
-    --accent: #fa2d48;
-    --text-main: #ffffff;
-}
-
 body {
-    background-color: var(--bg-dark);
-    color: var(--text-main);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: "Segoe UI", sans-serif;
 }
 
-.status-dot {
-    width: 10px; height: 10px; border-radius: 50%; 
-    background-color: #555; transition: 0.3s;
+.log-box {
+    background: #111;
+    border: 1px solid #444;
+    padding: 10px;
+    height: 200px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    border-radius: 8px;
 }
 
-.hero-search {
-    background: linear-gradient(180deg, rgba(250, 45, 72, 0.1) 0%, rgba(18, 18, 18, 0) 100%);
-    padding: 40px 20px;
-    border-radius: 0 0 20px 20px;
+/* 2FA Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    backdrop-filter: blur(3px);
 }
 
-.search-input {
-    background: #2c2c2c; border: none; color: white;
-    padding: 15px 20px; border-radius: 30px; font-size: 1.1rem;
-}
-.search-input:focus {
-    background: #333; color: white; box-shadow: 0 0 0 2px var(--accent); outline: none;
-}
-
-/* Quality Selector */
-.quality-opt input { display: none; }
-.opt-box {
-    background: #2c2c2c; padding: 10px 20px; border-radius: 12px;
-    border: 2px solid transparent; cursor: pointer; text-align: center; min-width: 100px;
-}
-.quality-opt input:checked + .opt-box {
-    border-color: var(--accent); background: rgba(250, 45, 72, 0.1);
+.modal-content {
+    background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+    border: 2px solid #444;
+    border-radius: 15px;
+    padding: 30px;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    animation: modalSlideIn 0.3s ease-out;
+    color: white;
 }
 
-/* Cards */
-.queue-card {
-    background: var(--bg-card); border-radius: 12px;
-    border: 1px solid transparent; transition: 0.2s;
-}
-.queue-card:hover { background: #2a2a2a; transform: translateY(-2px); }
-
-.card-progress-bg {
-    position: absolute; bottom: 0; left: 0; height: 3px;
-    background: var(--accent); transition: width 0.5s ease;
+.modal-header {
+    text-align: center;
+    margin-bottom: 20px;
 }
 
-/* Scrollbar Custom */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: #121212; }
-::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #555; }
-
-/* Settings */
-.settings-container { max-width: 800px; margin: 0 auto; }
-.settings-group {
-    background: var(--bg-card); border-radius: 16px; padding: 25px; margin-bottom: 20px;
-    border: 1px solid #333;
-}
-.form-control-dark {
-    background: #121212; border: 1px solid #444; color: white;
-}
-.form-control-dark:focus {
-    background: #000; border-color: var(--accent); color: white;
+.modal-title {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #00d4ff;
+    margin: 0;
 }
 
-.btn-apple {
-    background: var(--accent); color: white; border-radius: 20px; border:none;
+.modal-body {
+    text-align: center;
 }
-.btn-apple:hover { background: #d41e36; color: white; }
+
+.modal-body p {
+    font-size: 1.1rem;
+    color: #ccc;
+}
+
+.modal-body input {
+    background: #333;
+    border: 2px solid #555;
+    color: white;
+    font-size: 1.2rem;
+    letter-spacing: 2px;
+    transition: all 0.3s ease;
+}
+
+.modal-body input:focus {
+    border-color: #00d4ff;
+    background: #444;
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+}
+
+.gap-2 {
+    gap: 0.5rem !important;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
