@@ -21,25 +21,32 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS queue 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   link TEXT, format TEXT, status TEXT, title TEXT, 
-                  progress TEXT, created_at TIMESTAMP)''')
+                  progress TEXT, created_at TIMESTAMP, position INTEGER)''')
     try: c.execute("ALTER TABLE queue ADD COLUMN progress TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE queue ADD COLUMN position INTEGER")
     except: pass
     c.execute("CREATE INDEX IF NOT EXISTS idx_status ON queue(status)")
     c.execute("UPDATE queue SET status = 'failed', progress = 'Reiniciado' WHERE status = 'processing'")
+    c.execute("UPDATE queue SET position = id WHERE position IS NULL")
     conn.commit()
     conn.close()
 
 def add_to_queue(link, fmt, title=None):
     conn = get_db_connection()
     safe_title = title if title else "Aguardando metadados..."
-    conn.execute("INSERT INTO queue (link, format, status, title, progress, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                 (link, fmt, "pending", safe_title, "0", datetime.now()))
+    max_position = conn.execute("SELECT COALESCE(MAX(position), 0) FROM queue").fetchone()[0]
+    next_position = max_position + 1
+    conn.execute(
+        "INSERT INTO queue (link, format, status, title, progress, created_at, position) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (link, fmt, "pending", safe_title, "0", datetime.now(), next_position)
+    )
     conn.commit()
     conn.close()
 
 def get_queue_status():
     conn = get_db_connection()
-    items = conn.execute("SELECT * FROM queue ORDER BY id DESC").fetchall()
+    items = conn.execute("SELECT * FROM queue ORDER BY position ASC, id DESC").fetchall()
     conn.close()
     return {"items": [dict(ix) for ix in items], "paused": QUEUE_PAUSED}
 
@@ -52,6 +59,43 @@ def cancel_current_task(task_id):
     if downloader.running:
         downloader.stop()
     update_status(task_id, "cancelled", progress="Cancelado pelo usuário")
+
+def cancel_pending_task(task_id):
+    update_status(task_id, "cancelled", progress="Cancelado pelo usuário")
+
+def swap_queue_positions(first_id, second_id):
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT id, position FROM queue WHERE id IN (?, ?)", (first_id, second_id)
+    ).fetchall()
+    if len(rows) != 2:
+        conn.close()
+        return False
+    pos_map = {row["id"]: row["position"] for row in rows}
+    conn.execute("UPDATE queue SET position = ? WHERE id = ?", (pos_map[first_id], second_id))
+    conn.execute("UPDATE queue SET position = ? WHERE id = ?", (pos_map[second_id], first_id))
+    conn.commit()
+    conn.close()
+    return True
+
+def move_queue_item(task_id, direction):
+    conn = get_db_connection()
+    item = conn.execute(
+        "SELECT id, position FROM queue WHERE id = ? AND status = 'pending'", (task_id,)
+    ).fetchone()
+    if not item:
+        conn.close()
+        return False
+    operator = "<" if direction == "up" else ">"
+    order = "DESC" if direction == "up" else "ASC"
+    neighbor = conn.execute(
+        f"SELECT id, position FROM queue WHERE status = 'pending' AND position {operator} ? ORDER BY position {order} LIMIT 1",
+        (item["position"],)
+    ).fetchone()
+    conn.close()
+    if not neighbor:
+        return False
+    return swap_queue_positions(item["id"], neighbor["id"])
 
 def update_status(task_id, status, title=None, progress=None):
     conn = get_db_connection()

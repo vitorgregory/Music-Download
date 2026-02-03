@@ -113,9 +113,56 @@ class DownloaderManager(ProcessManager):
     def __init__(self):
         super().__init__()
         # Pré-compila Regex para performance
-        self.re_table = re.compile(r"^\s*\|\s*(\d+)\s*\|\s*([^\|]+)\s*\|\s*([^\|]+)")
+        self.re_table = re.compile(r"^\s*\|\s*(\d+)\s*\|")
         self.re_list = re.compile(r"(?:^|\s|\[\w+\]\s+)(\d+)\s*[\.\:\-\)\]]\s+(.+)$")
         self.selection_keywords = ["select:", "enter choice", "choice:", "selection:"]
+        self.re_date = re.compile(r"\b(\d{4}([-/.]\d{2}([-/.]\d{2})?)?)\b")
+        self.re_duration = re.compile(r"\b(\d{1,2}:\d{2})\b")
+
+    def _split_table_row(self, clean):
+        if "|" not in clean:
+            return None
+        cells = [c.strip() for c in clean.strip().strip("|").split("|")]
+        if not cells or not cells[0].isdigit():
+            return None
+        return cells
+
+    def _extract_table_metadata(self, cells):
+        entry_id = cells[0]
+        columns = cells[1:]
+        if not columns:
+            return None
+
+        label = columns[0]
+        date = ""
+        kind = ""
+        duration = ""
+        extras = []
+
+        for col in columns[1:]:
+            if not date and self.re_date.search(col):
+                date = col.strip()
+                continue
+            if not duration and self.re_duration.search(col):
+                duration = col.strip()
+                continue
+            if not kind and any(t in col.lower() for t in ["album", "single", "ep", "video"]):
+                kind = col.strip()
+                continue
+            extras.append(col.strip())
+
+        meta = analyze_label_metadata(label)
+        if kind:
+            meta["type"] = kind
+        return {
+            "id": entry_id,
+            "label": meta["label"],
+            "type": meta["type"],
+            "tags": meta["tags"],
+            "date": date,
+            "duration": duration,
+            "extra": ", ".join([e for e in extras if e])
+        }
 
     def start(self, link, args=None):
         if self.running: return False
@@ -168,11 +215,10 @@ class DownloaderManager(ProcessManager):
             # Tenta Tabela
             m = self.re_table.search(clean)
             if m:
-                meta = analyze_label_metadata(m.group(2).strip())
-                options.insert(0, {
-                    "id": m.group(1), "label": meta['label'], "type": meta['type'], 
-                    "tags": meta['tags'], "date": m.group(3).strip()
-                })
+                cells = self._split_table_row(clean)
+                parsed = self._extract_table_metadata(cells) if cells else None
+                if parsed:
+                    options.insert(0, parsed)
                 continue
             
             # Tenta Lista
@@ -181,7 +227,7 @@ class DownloaderManager(ProcessManager):
                 meta = analyze_label_metadata(m.group(2).strip())
                 options.insert(0, {
                     "id": m.group(1), "label": meta['label'], "type": meta['type'], 
-                    "tags": meta['tags'], "date": ""
+                    "tags": meta['tags'], "date": "", "duration": "", "extra": ""
                 })
         return options
 

@@ -2,8 +2,8 @@ from flask import render_template, request, jsonify
 from urllib.parse import urlparse, parse_qs
 from . import app
 from .process_manager import wrapper, downloader
-from .utils import fetch_metadata, get_config, save_config
-from app.queue_manager import add_to_queue, get_queue_status, set_pause, cancel_current_task   
+from .utils import fetch_metadata, get_config, save_config, validate_config_payload
+from app.queue_manager import add_to_queue, get_queue_status, set_pause, cancel_current_task, cancel_pending_task, move_queue_item   
 import os
 import json
 import base64
@@ -106,8 +106,22 @@ def pause_queue():
 
 @app.route("/api/cancel_task", methods=["POST"])
 def cancel_task():
-    cancel_current_task(request.json.get("id"))
+    task_id = request.json.get("id")
+    status = request.json.get("status")
+    if status == "pending":
+        cancel_pending_task(task_id)
+    else:
+        cancel_current_task(task_id)
     return jsonify({"status": "ok"})
+
+@app.route("/api/move_queue", methods=["POST"])
+def move_queue():
+    task_id = request.json.get("id")
+    direction = request.json.get("direction")
+    moved = False
+    if direction in ("up", "down"):
+        moved = move_queue_item(task_id, direction)
+    return jsonify({"status": "ok", "moved": moved})
 
 @app.route("/analyze_link", methods=["POST"])
 def analyze():
@@ -173,7 +187,12 @@ def get_cfg():
 
 @app.route("/save_config", methods=["POST"])
 def save_cfg():
-    save_config(request.json)
+    payload = request.get_json(silent=True)
+    is_valid, normalized, error_message = validate_config_payload(payload)
+    if not is_valid:
+        return jsonify({"status": "error", "message": error_message}), 400
+    if not save_config(normalized):
+        return jsonify({"status": "error", "message": "Falha ao salvar configuração."}), 500
     return jsonify({"status":"ok"})
 
 @app.route("/delete_saved_credentials", methods=["POST"])
