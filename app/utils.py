@@ -3,6 +3,35 @@ import requests
 import yaml
 import os
 
+STRING_CONFIG_KEYS = {
+    "media-user-token",
+    "authorization-token",
+    "language",
+    "storefront",
+    "alac-save-folder",
+    "atmos-save-folder",
+    "aac-save-folder",
+    "album-folder-format",
+    "playlist-folder-format",
+    "song-file-format",
+    "artist-folder-format",
+    "explicit-tag",
+    "clean-tag",
+    "master-tag",
+    "convert-format",
+    "ffmpeg-path",
+    "ffmpeg-args",
+}
+
+BOOL_CONFIG_KEYS = {
+    "use-song-info-for-playlist",
+    "download-album-cover-for-playlist",
+    "convert-after-download",
+    "keep-original",
+}
+
+REQUIRED_CONFIG_KEYS = set(STRING_CONFIG_KEYS)
+
 def strip_ansi(text):
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     return ansi_escape.sub('', text)
@@ -23,6 +52,29 @@ def save_config(new_config):
             yaml.dump(new_config, f, default_flow_style=False, allow_unicode=True)
         return True
     except: return False
+
+def validate_config_payload(payload):
+    if not isinstance(payload, dict):
+        return False, None, "Payload inválido."
+
+    missing_keys = sorted(REQUIRED_CONFIG_KEYS - payload.keys())
+    if missing_keys:
+        return False, None, f"Chaves obrigatórias ausentes: {', '.join(missing_keys)}."
+
+    normalized = {}
+    for key, value in payload.items():
+        if key in STRING_CONFIG_KEYS:
+            if not isinstance(value, str):
+                return False, None, f"Valor inválido para '{key}'."
+            normalized[key] = value.strip()
+        elif key in BOOL_CONFIG_KEYS:
+            if not isinstance(value, bool):
+                return False, None, f"Valor inválido para '{key}'."
+            normalized[key] = value
+        else:
+            return False, None, f"Chave desconhecida: '{key}'."
+
+    return True, normalized, None
 
 def analyze_label_metadata(raw_label):
     clean_label = raw_label.strip()

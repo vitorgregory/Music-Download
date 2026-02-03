@@ -5,6 +5,9 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(fetchState, 1500);
 });
 
+let selectionOptions = [];
+let selectionSignature = "";
+
 function setupEventListeners() {
     const clickParams = [
         ['analyze-btn', analyzeLink],
@@ -23,6 +26,17 @@ function setupEventListeners() {
     clickParams.forEach(([id, fn]) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('click', fn);
+    });
+
+    const selectionFilters = [
+        'selection-search',
+        'selection-type-filter',
+        'selection-tag-filter',
+        'selection-year-filter'
+    ];
+    selectionFilters.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', renderSelectionList);
     });
 }
 
@@ -81,7 +95,7 @@ function updateDownloaderUI(d) {
     const selArea = document.getElementById('selection-area');
     if (d.needs_selection) {
         selArea.classList.remove('d-none');
-        renderSelectionList(d.options);
+        syncSelectionOptions(d.options);
     } else {
         selArea.classList.add('d-none');
     }
@@ -113,6 +127,7 @@ function updateQueueUI(q) {
     document.getElementById('count-history').innerText = historyItems.length;
 
     // Render Cards
+    activeItems = activeItems.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
     renderGrid(gridActive, activeItems, true);
     renderGrid(gridHistory, historyItems, false);
 }
@@ -123,7 +138,7 @@ function renderGrid(container, items, isActiveTab) {
         return;
     }
 
-    const html = items.map(item => {
+    const html = items.map((item, index) => {
         const progress = item.progress || "0";
         let statusColor = "secondary";
         let icon = "clock";
@@ -138,7 +153,11 @@ function renderGrid(container, items, isActiveTab) {
         // Lógica de Mensagem
         let statusMsg = "";
         if (item.status === 'processing') {
-            statusMsg = `<small class="text-warning fw-bold">${progress}%</small>`;
+            statusMsg = Number.isFinite(Number(progress))
+                ? `<small class="text-warning fw-bold">${progress}%</small>`
+                : `<small class="text-warning fw-bold">Processando</small>`;
+        } else if (item.status === 'pending') {
+            statusMsg = `<small class="text-muted fw-bold">Na fila</small>`;
         } else if (item.status === 'failed' || item.status === 'cancelled') {
             // Mostra o erro em vermelho
             statusMsg = `<small class="text-danger fw-bold" style="font-size:0.75em;" title="${progress}">${progress}</small>`;
@@ -146,27 +165,44 @@ function renderGrid(container, items, isActiveTab) {
             statusMsg = `<small class="text-success fw-bold">Concluído</small>`;
         }
 
+        const orderLabel = isActiveTab ? `<span class="queue-order">#${index + 1}</span>` : '';
+        const progressValue = Number(progress);
+        const progressPercent = Number.isFinite(progressValue) ? Math.min(Math.max(progressValue, 0), 100) : 0;
+        const progressBar = item.status === 'processing'
+            ? `<div class="card-progress-bg" style="width:${progressPercent}%"></div>`
+            : '';
+        const actionButtons = item.status === 'processing'
+            ? `<button onclick="stopTask(${item.id})" class="btn btn-link text-danger position-absolute top-0 end-0 p-2"><i class="fas fa-stop-circle"></i></button>`
+            : item.status === 'pending'
+                ? `<div class="queue-actions position-absolute top-0 end-0 p-2">
+                        <button onclick="moveTask(${item.id}, 'up')" class="btn btn-sm btn-dark"><i class="fas fa-arrow-up"></i></button>
+                        <button onclick="moveTask(${item.id}, 'down')" class="btn btn-sm btn-dark"><i class="fas fa-arrow-down"></i></button>
+                        <button onclick="cancelTask(${item.id}, 'pending')" class="btn btn-sm btn-outline-danger"><i class="fas fa-ban"></i></button>
+                   </div>`
+                : '';
+
         return `
         <div class="col-md-6 col-lg-4">
             <div class="queue-card p-3 d-flex align-items-center gap-3 position-relative overflow-hidden">
-                <div class="d-flex align-items-center justify-content-center bg-dark text-secondary rounded" style="width:50px; height:50px; flex-shrink:0;">
+                <div class="d-flex align-items-center justify-content-center queue-icon" style="width:50px; height:50px; flex-shrink:0;">
                     <i class="fas fa-music fa-lg"></i>
                 </div>
                 <div class="flex-grow-1 overflow-hidden" style="min-width:0;">
                     <div class="d-flex justify-content-between">
-                        <div class="track-title text-white text-truncate" title="${title}">${title}</div>
+                        <div class="track-title text-truncate fw-semibold" title="${title}">${title}</div>
+                        ${orderLabel}
                     </div>
                     <div class="text-truncate text-secondary small">${item.link}</div>
                     <div class="d-flex justify-content-between align-items-center mt-1">
                         <div>
-                            <span class="badge bg-dark border border-secondary" style="font-size:0.7em">${item.format.toUpperCase()}</span>
+                            <span class="badge badge-soft" style="font-size:0.7em">${item.format.toUpperCase()}</span>
                             <span class="badge bg-${statusColor}" style="font-size:0.7em"><i class="fas fa-${icon}"></i> ${item.status}</span>
                         </div>
                         ${statusMsg}
                     </div>
                 </div>
-                ${item.status === 'processing' ? `<div class="card-progress-bg" style="width:${progress}%"></div>` : ''}
-                ${item.status === 'processing' ? `<button onclick="stopTask(${item.id})" class="btn btn-link text-danger position-absolute top-0 end-0 p-2"><i class="fas fa-stop-circle"></i></button>` : ''}
+                ${progressBar}
+                ${actionButtons}
             </div>
         </div>`;
     }).join('');
@@ -243,7 +279,15 @@ function togglePause() {
 }
 
 function stopTask(id) {
-    if(confirm("Parar download?")) axios.post('/api/cancel_task', {id});
+    if(confirm("Parar download?")) axios.post('/api/cancel_task', {id, status: 'processing'});
+}
+
+function cancelTask(id, status) {
+    if(confirm("Cancelar item da fila?")) axios.post('/api/cancel_task', {id, status});
+}
+
+function moveTask(id, direction) {
+    axios.post('/api/move_queue', {id, direction});
 }
 
 function stopWrapper() { axios.post('/stop_wrapper'); }
@@ -258,32 +302,94 @@ function submit2FA() {
     document.getElementById('twofa-modal').classList.add('d-none');
 }
 
-// Render Selection List (Bootstrap styled)
-function renderSelectionList(opts) {
-    const list = document.getElementById('selection-list');
-    // Verifica se a lista mudou pelo tamanho, para evitar repintar
-    if(list.childElementCount === opts.length) return;
+function syncSelectionOptions(opts) {
+    const signature = JSON.stringify(opts || []);
+    if (signature === selectionSignature) return;
+    selectionSignature = signature;
+    selectionOptions = Array.isArray(opts) ? opts : [];
+    updateSelectionFilters(selectionOptions);
+    renderSelectionList();
+}
 
-    list.innerHTML = opts.map(o => {
+function updateSelectionFilters(opts) {
+    const tagFilter = document.getElementById('selection-tag-filter');
+    const yearFilter = document.getElementById('selection-year-filter');
+    if (!tagFilter || !yearFilter) return;
+
+    const tags = new Set();
+    const years = new Set();
+    opts.forEach((opt) => {
+        (opt.tags || []).forEach((tag) => tags.add(tag));
+        if (opt.date) {
+            const yearMatch = opt.date.match(/\b(\d{4})\b/);
+            if (yearMatch) years.add(yearMatch[1]);
+        }
+    });
+
+    const currentTag = tagFilter.value;
+    const currentYear = yearFilter.value;
+
+    tagFilter.innerHTML = '<option value="">Todas as edições</option>' +
+        Array.from(tags).sort().map(tag => `<option value="${tag}">${tag}</option>`).join('');
+    yearFilter.innerHTML = '<option value="">Todas as datas</option>' +
+        Array.from(years).sort().reverse().map(year => `<option value="${year}">${year}</option>`).join('');
+
+    if (currentTag) tagFilter.value = currentTag;
+    if (currentYear) yearFilter.value = currentYear;
+}
+
+function renderSelectionList() {
+    const list = document.getElementById('selection-list');
+    if (!list) return;
+
+    const search = document.getElementById('selection-search')?.value?.toLowerCase() || '';
+    const typeFilter = document.getElementById('selection-type-filter')?.value || '';
+    const tagFilter = document.getElementById('selection-tag-filter')?.value || '';
+    const yearFilter = document.getElementById('selection-year-filter')?.value || '';
+
+    const filtered = selectionOptions.filter((opt) => {
+        const matchesSearch = !search || `${opt.label} ${opt.extra || ''}`.toLowerCase().includes(search);
+        const matchesType = !typeFilter || opt.type === typeFilter;
+        const matchesTag = !tagFilter || (opt.tags || []).includes(tagFilter);
+        const matchesYear = !yearFilter || (opt.date || '').includes(yearFilter);
+        return matchesSearch && matchesType && matchesTag && matchesYear;
+    });
+
+    const summary = document.getElementById('selection-summary');
+    if (summary) summary.textContent = `${filtered.length} itens`;
+
+    if (!filtered.length) {
+        list.innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center text-muted py-4">Nenhum item encontrado.</td>
+            </tr>`;
+        return;
+    }
+
+    list.innerHTML = filtered.map(o => {
         let badgeColor = 'bg-secondary';
         if (o.type === 'Album') badgeColor = 'bg-primary';
         if (o.type === 'Single') badgeColor = 'bg-info text-dark';
         if (o.type === 'EP') badgeColor = 'bg-success';
         
         return `
-        <div class="form-check border-bottom border-secondary py-2">
-            <input class="form-check-input mt-2" type="checkbox" value="${o.id}" id="chk-${o.id}">
-            <label class="form-check-label w-100 ps-2" for="chk-${o.id}" style="cursor:pointer">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <div class="fw-bold text-white">${o.label}</div>
-                        <span class="badge ${badgeColor}">${o.type}</span>
-                        ${(o.tags||[]).map(t=>`<span class="badge bg-dark border border-secondary ms-1">${t}</span>`).join('')}
-                    </div>
-                    <small class="text-muted">${o.date || ''}</small>
-                </div>
-            </label>
-        </div>`;
+        <tr>
+            <td>
+                <input class="form-check-input" type="checkbox" value="${o.id}" id="chk-${o.id}">
+            </td>
+            <td>
+                <label class="form-check-label selection-label" for="chk-${o.id}">
+                    <div class="fw-bold">${o.label}</div>
+                    <div class="text-muted small">${o.extra || '—'}</div>
+                </label>
+            </td>
+            <td><span class="badge ${badgeColor}">${o.type}</span></td>
+            <td>
+                ${(o.tags||[]).map(t=>`<span class="badge tag-pill me-1">${t}</span>`).join('') || '<span class="text-muted small">—</span>'}
+            </td>
+            <td class="text-muted small">${o.date || '—'}</td>
+            <td class="text-muted small">${o.duration || '—'}</td>
+        </tr>`;
     }).join('');
 }
 
