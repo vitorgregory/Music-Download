@@ -291,6 +291,21 @@ def queue_worker():
                         else:
                             print(f"[QUEUE] Falha marcada: {error_msg}")
                             _handle_failure(current_id, error_msg)
+
+            if downloader.process.poll() is not None:
+                return_code = downloader.process.returncode
+                if return_code == 0:
+                    update_status(current_id, "completed", progress="100")
+                else:
+                    _handle_failure(current_id, f"Process exit {return_code}")
+# 2. Timeout (seu stall já funciona)
+            elif stall_detected:
+                _handle_failure(current_id, f"Tarefa travada")
+
+# 3. is_complete() como fallback FINAL
+            elif downloader.is_complete():
+                update_status(current_id, "completed", progress="100")         
+                
             else:
                 # Failed to start - treat as transient and schedule retry
                 _handle_failure(current_id, "Falha ao iniciar")

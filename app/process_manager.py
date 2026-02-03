@@ -342,12 +342,40 @@ class DownloaderManager(ProcessManager):
                             self.input_options = options
                             self.needs_input = True
                         self._log(">>> AGUARDANDO SELEÇÃO DO USUÁRIO <<<")
+                        
         finally:
             with self._lock:
                 self.running = False
             if self.is_playlist:
                 time.sleep(1)
                 generate_m3u_playlist(self.current_format)
+
+    def is_complete(self):
+        """Detecta fim do download mesmo se subprocesso não sair graciosamente"""
+        if self.process is None:
+            return True
+        
+        # FIX 1: Verifica se processo terminou
+        if self.process.poll() is not None:
+            return True
+        
+        # FIX 2: Timeout de 2h (7200s) desde último output
+        if hasattr(self, 'last_output_at') and time.time() - self.last_output_at > 7200:
+            self._log("Download timeout - marking complete")
+            return True
+        
+        # FIX 3: Procura padrões de conclusão nos logs
+        log_text = ' '.join(self.logs[-20:]).lower()
+        complete_patterns = [
+            'download complete', 'all tracks processed', 'finished', 
+            'total downloaded', 'process finished', 'exit status 0'
+        ]
+        for pattern in complete_patterns:
+            if pattern in log_text:
+                self._log(f"Download completion detected: {pattern}")
+                return True
+        
+        return False
 
 wrapper = WrapperManager()
 downloader = DownloaderManager()
