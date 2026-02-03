@@ -1,178 +1,168 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-bs-theme="dark">
+<html lang="pt-BR" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Configurações Avançadas</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <style>
-        .settings-header { border-left: 4px solid var(--accent); padding-left: 15px; margin-bottom: 20px; color: white; }
-        .form-label { color: #b3b3b3; font-size: 0.9rem; }
-        .form-control, .form-select { background-color: #222; border: 1px solid #444; color: white; }
-        .form-control:focus { background-color: #2a2a2a; border-color: var(--accent); color: white; box-shadow: none; }
-        .form-check-input:checked { background-color: var(--accent); border-color: var(--accent); }
-    </style>
+    <script>
+        // Attach CSRF token for axios from meta tag on this page
+        try {
+            const meta = document.querySelector('meta[name="csrf-token"]');
+            if (meta) axios.defaults.headers.common['X-CSRFToken'] = meta.getAttribute('content');
+        } catch (e) { /* ignore */ }
+    </script>
 </head>
 <body>
     <div class="container py-5">
-        <div class="d-flex align-items-center justify-content-between mb-5">
-            <div class="d-flex align-items-center">
-                <a href="/" class="btn btn-outline-secondary me-3 rounded-circle"><i class="fas fa-arrow-left"></i></a>
-                <h2 class="m-0 fw-bold">Configurações</h2>
+        <div class="settings-top mb-5">
+            <div class="d-flex align-items-center gap-3">
+                <a href="/" class="btn btn-icon rounded-circle"><i class="fas fa-arrow-left"></i></a>
+                <div>
+                    <div class="hero-label">Centro de configuração</div>
+                    <h2 class="page-title display-font">Configurações</h2>
+                </div>
             </div>
-            <button onclick="saveSettings()" class="btn btn-primary px-4 fw-bold"><i class="fas fa-save me-2"></i>Salvar Tudo</button>
+            <button onclick="saveSettings()" class="btn btn-accent px-4 fw-bold"><i class="fas fa-save me-2"></i>Salvar tudo</button>
         </div>
 
         <div class="settings-container">
-            
-            <div class="card bg-dark border-secondary mb-4">
-                <div class="card-body">
-                    <h5 class="settings-header"><i class="fas fa-lock me-2 text-warning"></i>Autenticação</h5>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Media User Token</label>
-                            <input type="text" id="media-user-token" class="form-control" placeholder="Token Apple Music...">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Authorization Token</label>
-                            <input type="text" id="authorization-token" class="form-control" placeholder="Bearer ...">
-                        </div>
+            <div class="settings-group">
+                <h5 class="settings-header"><i class="fas fa-lock me-2 text-warning"></i>Autenticação</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Media User Token</label>
+                        <input type="text" id="media-user-token" class="form-control" placeholder="Token Apple Music...">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Authorization Token</label>
+                        <input type="text" id="authorization-token" class="form-control" placeholder="Bearer ...">
                     </div>
                 </div>
             </div>
 
-            <div class="card bg-dark border-secondary mb-4">
-                <div class="card-body">
-                    <h5 class="settings-header"><i class="fas fa-globe me-2 text-info"></i>Região & Idioma</h5>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Idioma (Language)</label>
-                            <input type="text" id="language" class="form-control" placeholder="pt-BR">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Loja (Storefront)</label>
-                            <input type="text" id="storefront" class="form-control" placeholder="br">
-                        </div>
+            <div class="settings-group">
+                <h5 class="settings-header"><i class="fas fa-globe me-2 text-info"></i>Região & Idioma</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Idioma (Language)</label>
+                        <input type="text" id="language" class="form-control" placeholder="pt-BR">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Loja (Storefront)</label>
+                        <input type="text" id="storefront" class="form-control" placeholder="br">
                     </div>
                 </div>
             </div>
 
-            <div class="card bg-dark border-secondary mb-4">
-                <div class="card-body">
-                    <h5 class="settings-header"><i class="fas fa-folder me-2 text-warning"></i>Pastas de Download</h5>
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Pasta ALAC</label>
-                            <input type="text" id="alac-save-folder" class="form-control">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Pasta Atmos</label>
-                            <input type="text" id="atmos-save-folder" class="form-control">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Pasta AAC</label>
-                            <input type="text" id="aac-save-folder" class="form-control">
-                        </div>
+            <div class="settings-group">
+                <h5 class="settings-header"><i class="fas fa-folder me-2 text-warning"></i>Pastas de Download</h5>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Pasta ALAC</label>
+                        <input type="text" id="alac-save-folder" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Pasta Atmos</label>
+                        <input type="text" id="atmos-save-folder" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Pasta AAC</label>
+                        <input type="text" id="aac-save-folder" class="form-control">
                     </div>
                 </div>
             </div>
 
-            <div class="card bg-dark border-secondary mb-4">
-                <div class="card-body">
-                    <h5 class="settings-header"><i class="fas fa-file-signature me-2 text-white"></i>Formato de Nomes (Naming)</h5>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Formato da Pasta do Álbum</label>
-                            <input type="text" id="album-folder-format" class="form-control" placeholder="{AlbumName}">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Formato da Pasta da Playlist</label>
-                            <input type="text" id="playlist-folder-format" class="form-control" placeholder="{PlaylistName}">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Formato do Arquivo de Música</label>
-                            <input type="text" id="song-file-format" class="form-control" placeholder="{SongNumber}. {SongName}">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Formato da Pasta do Artista</label>
-                            <input type="text" id="artist-folder-format" class="form-control" placeholder="{ArtistName}">
-                            <div class="form-text text-secondary">Deixe vazio para não criar pasta de artista.</div>
-                        </div>
+            <div class="settings-group">
+                <h5 class="settings-header"><i class="fas fa-file-signature me-2 text-primary"></i>Formato de Nomes (Naming)</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Formato da Pasta do Álbum</label>
+                        <input type="text" id="album-folder-format" class="form-control" placeholder="{AlbumName}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Formato da Pasta da Playlist</label>
+                        <input type="text" id="playlist-folder-format" class="form-control" placeholder="{PlaylistName}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Formato do Arquivo de Música</label>
+                        <input type="text" id="song-file-format" class="form-control" placeholder="{SongNumber}. {SongName}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Formato da Pasta do Artista</label>
+                        <input type="text" id="artist-folder-format" class="form-control" placeholder="{ArtistName}">
+                        <div class="form-text text-secondary">Deixe vazio para não criar pasta de artista.</div>
                     </div>
                 </div>
             </div>
 
-            <div class="card bg-dark border-secondary mb-4">
-                <div class="card-body">
-                    <h5 class="settings-header"><i class="fas fa-tags me-2 text-white"></i>Tags & Metadados</h5>
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Tag Explicit [E]</label>
-                            <input type="text" id="explicit-tag" class="form-control" value="[E]">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Tag Clean [C]</label>
-                            <input type="text" id="clean-tag" class="form-control" value="[C]">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Tag Apple Master [M]</label>
-                            <input type="text" id="master-tag" class="form-control" value="[M]">
-                        </div>
+            <div class="settings-group">
+                <h5 class="settings-header"><i class="fas fa-tags me-2 text-primary"></i>Tags & Metadados</h5>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Tag Explicit [E]</label>
+                        <input type="text" id="explicit-tag" class="form-control" value="[E]">
                     </div>
-                    <div class="d-flex gap-4">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="use-song-info-for-playlist">
-                            <label class="form-check-label" for="use-song-info-for-playlist">Usar info original da música em Playlists</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="download-album-cover-for-playlist">
-                            <label class="form-check-label" for="download-album-cover-for-playlist">Baixar capa para Playlists</label>
-                        </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Tag Clean [C]</label>
+                        <input type="text" id="clean-tag" class="form-control" value="[C]">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Tag Apple Master [M]</label>
+                        <input type="text" id="master-tag" class="form-control" value="[M]">
+                    </div>
+                </div>
+                <div class="d-flex gap-4 flex-wrap">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="use-song-info-for-playlist">
+                        <label class="form-check-label" for="use-song-info-for-playlist">Usar info original da música em Playlists</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="download-album-cover-for-playlist">
+                        <label class="form-check-label" for="download-album-cover-for-playlist">Baixar capa para Playlists</label>
                     </div>
                 </div>
             </div>
 
-            <div class="card bg-dark border-secondary mb-4">
-                <div class="card-body">
-                    <h5 class="settings-header"><i class="fas fa-sync-alt me-2 text-primary"></i>Conversão (FFmpeg)</h5>
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-4">
-                            <div class="form-check mt-4">
-                                <input class="form-check-input" type="checkbox" id="convert-after-download">
-                                <label class="form-check-label fw-bold" for="convert-after-download">Converter após baixar</label>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Formato de Destino</label>
-                            <input type="text" id="convert-format" class="form-control" placeholder="FLAC, MP3...">
-                        </div>
-                        <div class="col-md-4">
-                             <div class="form-check mt-4">
-                                <input class="form-check-input" type="checkbox" id="keep-original">
-                                <label class="form-check-label" for="keep-original">Manter arquivo original</label>
-                            </div>
+            <div class="settings-group">
+                <h5 class="settings-header"><i class="fas fa-sync-alt me-2 text-primary"></i>Conversão (FFmpeg)</h5>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="convert-after-download">
+                            <label class="form-check-label fw-bold" for="convert-after-download">Converter após baixar</label>
                         </div>
                     </div>
-                    <div class="row g-3">
-                         <div class="col-md-6">
-                            <label class="form-label">Caminho do FFmpeg</label>
-                            <input type="text" id="ffmpeg-path" class="form-control" placeholder="ffmpeg">
+                    <div class="col-md-4">
+                        <label class="form-label">Formato de Destino</label>
+                        <input type="text" id="convert-format" class="form-control" placeholder="FLAC, MP3...">
+                    </div>
+                    <div class="col-md-4">
+                         <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="keep-original">
+                            <label class="form-check-label" for="keep-original">Manter arquivo original</label>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label">Argumentos Extras</label>
-                            <input type="text" id="ffmpeg-args" class="form-control" placeholder="-b:a 320k ...">
-                        </div>
+                    </div>
+                </div>
+                <div class="row g-3">
+                     <div class="col-md-6">
+                        <label class="form-label">Caminho do FFmpeg</label>
+                        <input type="text" id="ffmpeg-path" class="form-control" placeholder="ffmpeg">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Argumentos Extras</label>
+                        <input type="text" id="ffmpeg-args" class="form-control" placeholder="-b:a 320k ...">
                     </div>
                 </div>
             </div>
             
-            <div class="d-flex justify-content-end gap-3 mt-4 pb-5">
+            <div class="settings-actions mt-4 pb-5">
                 <button onclick="deleteCreds()" class="btn btn-outline-danger">Sair da Conta</button>
-                <button onclick="saveSettings()" class="btn btn-success px-5 fw-bold btn-lg">Salvar Configurações</button>
+                <button onclick="saveSettings()" class="btn btn-accent px-5 fw-bold btn-lg">Salvar Configurações</button>
             </div>
-
         </div>
     </div>
 
@@ -222,6 +212,7 @@
                         }
                     }
                 }
+                // API key removed; nothing to load from localStorage.
             } catch(e) { 
                 console.error(e);
                 alert("Erro ao carregar configurações."); 
@@ -243,11 +234,22 @@
                 }
             }
             
+            // Disable save buttons and show spinner
+            const saveButtons = Array.from(document.querySelectorAll('button[onclick="saveSettings()"]'));
+            saveButtons.forEach(b => { b.disabled = true; b.dataset.orig = b.innerHTML; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...'; });
+
             try {
-                await axios.post("/save_config", data);
-                alert("Configurações salvas com sucesso!");
+                const res = await axios.post("/save_config", data);
+                // Save API key to localStorage and set axios header
+                // API key removed; no client-side storage required.
+
+                const msg = (res && res.data && res.data.message) ? res.data.message : 'Configurações salvas com sucesso!';
+                alert(msg);
             } catch (e) {
-                alert("Erro ao salvar.");
+                const serverMsg = e?.response?.data?.message;
+                alert(serverMsg || 'Erro ao salvar.');
+            } finally {
+                saveButtons.forEach(b => { b.disabled = false; b.innerHTML = b.dataset.orig || 'Salvar Configurações'; });
             }
         }
 

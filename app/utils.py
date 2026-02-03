@@ -36,6 +36,27 @@ def strip_ansi(text):
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     return ansi_escape.sub('', text)
 
+
+def is_valid_apple_music_url(url: str) -> bool:
+    """Basic validation: scheme http(s) and host contains music.apple.com"""
+    try:
+        parsed = __import__('urllib.parse').parse.urlparse(url)
+        if parsed.scheme not in ('http', 'https'):
+            return False
+        host = parsed.netloc.lower()
+        return 'music.apple.com' in host
+    except Exception:
+        return False
+
+
+def sanitize_title(title: str, max_len: int = 200) -> str:
+    if not isinstance(title, str):
+        return ''
+    t = title.strip()
+    if len(t) > max_len:
+        return t[:max_len]
+    return t
+
 def get_config_path():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_dir, "apple-music-downloader", "config.yaml")
@@ -57,10 +78,8 @@ def validate_config_payload(payload):
     if not isinstance(payload, dict):
         return False, None, "Payload inválido."
 
-    missing_keys = sorted(REQUIRED_CONFIG_KEYS - payload.keys())
-    if missing_keys:
-        return False, None, f"Chaves obrigatórias ausentes: {', '.join(missing_keys)}."
-
+    # Accept partial payloads: validate only provided keys and return a
+    # normalized subset that can be merged with existing configuration.
     normalized = {}
     for key, value in payload.items():
         if key in STRING_CONFIG_KEYS:

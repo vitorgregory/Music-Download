@@ -1,23 +1,53 @@
 services:
-  app:
+  apple-music-web:
     build: .
     container_name: apple-music-web-beta
+    # Expose the app directly on the host (server-local deployment)
     ports:
-      - "5005:5000"
+      - "5000:5000"
     volumes:
-      # --- CORREÇÃO DO ESPELHAMENTO ---
-      # Em vez de substituir a raiz inteira (.:/app),
-      # mapeamos APENAS a pasta de código Python.
-      # Assim, o 'wrapper' e o 'downloader' originais do container são preservados.
-      - ./app:/app/app
-      
-      # Mapeia os Downloads para seu HD
-      - /DATA/.media/Biblioteca/Media/Music:/app/apple-music-downloader/downloads
-      
-      # Mapeia os Dados (Banco de dados e credenciais)
-      - ./app/data:/app/app/data
-      
+      # ZimaOS-friendly named volumes (preferred for production on NAS)
+      - music-download-data:/app/data
+      - music-download-downloads:/app/downloads
+      - music-download-config:/app/apple-music-downloader
+
+      # If you prefer host-mounted paths on ZimaOS, uncomment and adjust below:
+      # - ./data:/app/data
+      # - ./downloads:/app/apple-music-downloader/downloads
+      # - ./apple-music-downloader:/app/apple-music-downloader:ro
+      # - ./wrapper:/app/wrapper:ro
+
     environment:
-      - FLASK_DEBUG=1
-      
+      - FLASK_DEBUG=0
+      - RATELIMIT_STORAGE_URL=redis://redis:6379
+
+    # Healthcheck ensures container is healthy before load-balancing / restarts
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # Restart policy and resource guidance for ZimaOS
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    # Non-swarm fallback (some compose versions respect these)
+    mem_limit: 512m
+  # nginx removed — app is served directly on host port 5000
+  redis:
+    image: redis:7-alpine
+    container_name: apple-music-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+  music-download-data:
+  music-download-downloads:
+  music-download-config:

@@ -3,17 +3,19 @@ Provide compact, actionable guidance so AI coding agents are immediately product
 
 ## Big picture
 - This project is a Docker-first Flask web UI that wraps an external Go-based Apple Music downloader. The web backend orchestrates two long-running subprocess types: the `wrapper` binary (login/2FA) and the Go downloader (invoked via `go run main.go`). See [main.py](main.py#L1-L3) and the Flask app in [app/routes.py](app/routes.py#L1-L20).
-- Background queue processing runs in-process: `queue_worker()` in [app/queue_manager.py](app/queue_manager.py#L1-L20) starts a daemon thread on import and manages an SQLite queue at `data/queue.db`.
+- Background queue processing runs in-process: `queue_worker()` in [app/queue_manager.py](app/queue_manager.py#L1-L20) starts a daemon thread on import and manages an SQLite queue at `data/queue.db`. Note: the worker auto-start is now guarded by `DISABLE_QUEUE_WORKER` so tests/CI can import the module without launching background threads.
 
 ## Key components & responsibilities
 - `app/process_manager.py`: implements `ProcessManager`, `WrapperManager`, and `DownloaderManager`. These classes handle subprocess lifecycle, log streaming, and user input collection (2FA / selection). Inspect parsing/regex logic for selection detection and table parsing. ([app/process_manager.py](app/process_manager.py#L1-L40)).
 - `app/queue_manager.py`: persistent queue logic, status transitions, error heuristics and the worker loop. Changing DB schema, error heuristics, or worker behavior affects runtime behavior immediately because it runs on import. ([app/queue_manager.py](app/queue_manager.py#L1-L40)).
+ - `app/queue_manager.py`: persistent queue logic, status transitions, error heuristics and the worker loop. Changing DB schema, error heuristics, or worker behavior affects runtime behavior immediately because it runs on import. ([app/queue_manager.py](app/queue_manager.py#L1-L40)).
+  - New behavior: automatic retries with exponential backoff and a dead-letter (`dead`) state. `init_db()` performs non-destructive ALTERs to add `failed_attempts` and `next_try_at`.
 - `app/utils.py`: config handling (YAML at `apple-music-downloader/config.yaml`), metadata scraping, and helper regexes. Many behaviors (playlist generation, folder names) read this config. ([app/utils.py](app/utils.py#L1-L40)).
 - `app/routes.py`: single-page UI endpoints and unified `/api/state` polling endpoint used by the frontend for logs, queue state and selection prompts. Use these endpoints when integrating frontend changes. ([app/routes.py](app/routes.py#L1-L40)).
 
 ## Important runtime facts / gotchas
-- The queue worker thread starts automatically at import time. Avoid importing `app.queue_manager` in contexts where you don't want the background thread to run (tests, one-off scripts) unless you intend to run it. See `threading.Thread(... daemon=True).start()` at the end of [app/queue_manager.py](app/queue_manager.py#L340-L360).
-- Credentials are stored base64-encoded in `data/.credentials` via `save_creds`/`load_creds` in [app/routes.py](app/routes.py#L1-L40).
+- The queue worker thread starts automatically at import time by default; set `DISABLE_QUEUE_WORKER=1` to prevent auto-start (tests should set this). The worker exposes `start_worker()`, `WORKER_STOP_EVENT`, and `WORKER_THREAD` for deterministic control in tests.
+- Credentials are stored encrypted using Fernet (see `app/crypto.py`) and read/written via `save_creds`/`load_creds` in [app/routes.py](app/routes.py#L1-L40).
 - The downloader expects the `apple-music-downloader` folder to exist at repo root and the wrapper binary to be at `wrapper/wrapper` (see start logic in `WrapperManager.start` and `DownloaderManager.start`). Do not rename those paths unless you update the code.
 - Logs are capped (ProcessManager keeps ~300 entries). Selection parsing relies on specific table/list formats produced by the Go downloader—changes to that output break selection parsing.
 

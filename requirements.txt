@@ -1,3 +1,8 @@
 flask
 pyyaml
 requests
+cryptography
+Flask-Limiter
+Flask-WTF
+pytest
+redis>=4.0

@@ -94,6 +94,47 @@ This version moves away from runtime installation scripts (`main.py` install log
 * `static/script.js`: Isolated frontend logic for polling logs and UI rendering.
 
 
+## API & Operational Notes
+
+This project exposes a small HTTP API used by the single-page UI. Important behavioral changes in this refactor:
+
+- The queue now supports automatic retries with exponential backoff and a dead-letter state. Tasks include two new DB fields: `failed_attempts` and `next_try_at`.
+- Environment variables to control retry behavior:
+    - `MAX_RETRIES` (default: 3)
+    - `RETRY_BASE_SECONDS` (default: 5)
+    - `DISABLE_QUEUE_WORKER` = '1' prevents the automatic queue worker auto-start (useful in tests/CI)
+
+Key endpoints (examples):
+
+- `GET /api/state` — unified state payload used by the frontend. Response:
+
+```json
+{
+    "wrapper": {"running": false, "logs": [], "needs_2fa": false},
+    "downloader": {"running": false, "logs": [], "needs_selection": false, "options": []},
+    "queue": {"items": [/* queue items */], "paused": false}
+}
+```
+
+- `POST /download` — add an item to the queue. Form fields: `link`, `title` (optional), `format` (`alac|aac|atmos`). Example response:
+
+```json
+{ "status": "ok", "format": "alac" }
+```
+
+- `POST /api/pause_queue` — JSON `{ "paused": true }` to pause. Response `{ "paused": true }`.
+- `POST /api/cancel_task` — JSON `{ "id": 123, "status": "pending" }`.
+
+Notes on queue states:
+- `pending` — awaiting processing (skips tasks where `next_try_at` is in the future).
+- `processing` — currently being processed by the downloader.
+- `completed` — finished successfully (progress `100`).
+- `failed` — failure state used transiently; the worker will attempt retries.
+- `dead` — permanent failure after retries exhausted or a detected permanent error (e.g., DRM/401). Administrators can inspect and requeue these items manually by DB update.
+
+Migration notes are in `MIGRATIONS.md`.
+
+
 
 ## ⚠️ Disclaimer
 
@@ -103,3 +144,32 @@ This tool is for educational purposes and personal use only. Please respect Appl
 
 * **@zhaarey** for the heavy lifting on the core downloader tools.
 * **Open Source Community** for keeping media preservation tools alive.
+
+## Installing required external components
+
+This web UI is a wrapper around two external components that must be present in the repository root:
+
+- `apple-music-downloader/` — the Go downloader project (must contain `main.go`).
+- `wrapper/wrapper` — the login wrapper binary used for Apple Music authentication.
+
+Quick commands to install them locally (run from the repo root):
+
+1. Clone the Go downloader (example):
+```bash
+git clone https://github.com/zhaarey/apple-music-downloader.git apple-music-downloader
+```
+
+2. Place the wrapper binary under `wrapper/wrapper` (or make a symlink):
+```bash
+# Example: if you have a local wrapper binary
+mkdir -p wrapper
+cp /path/to/wrapper wrapper/wrapper
+chmod +x wrapper/wrapper
+```
+
+3. Rebuild or restart the container if using Docker:
+```bash
+docker-compose up -d --build
+```
+
+After these are present the UI will automatically start downloads; the app also displays warnings on the main page if either component is missing.

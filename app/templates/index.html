@@ -8,13 +8,14 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body>
 
     <nav class="navbar navbar-expand-lg nav-surface mb-4">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="#">
-                <i class="fab fa-apple me-2"></i>Zima<span style="color:var(--accent)">Music</span>
+            <a class="navbar-brand fw-bold brand-mark" href="#">
+                <i class="fab fa-apple me-2"></i>Zima <span class="text-primary">Music</span>
             </a>
             <div class="d-flex align-items-center gap-3">
                 <div id="wrapper-status-dot" class="status-dot" title="Status"></div>
@@ -31,12 +32,13 @@
 
     <div class="container mb-5 app-shell">
         <div class="hero-search mx-auto text-center" style="max-width: 860px;">
-            <h3 class="fw-semibold text-primary mb-2">Biblioteca Global</h3>
+            <div class="hero-label mb-2">Coleções e downloads</div>
+            <h3 class="fw-semibold mb-2 display-font">Biblioteca Global</h3>
             <p class="text-muted mb-4">Cole um link do Apple Music e gerencie suas filas em um só lugar.</p>
             
             <div class="position-relative mb-4">
                 <input id="link-box" class="form-control search-input" placeholder="Cole o link do Apple Music...">
-                <button id="analyze-btn" class="btn position-absolute end-0 top-0 mt-2 me-3 text-secondary border-0 bg-transparent">
+                <button id="analyze-btn" class="btn btn-icon position-absolute end-0 top-0 mt-2 me-2">
                     <i class="fas fa-search fa-lg"></i>
                 </button>
             </div>
@@ -118,7 +120,7 @@
         </div>
     </div>
 
-    <div id="log-drawer" class="log-drawer fixed-bottom bg-black border-top border-secondary" style="height: 0; transition: 0.3s; overflow: hidden;">
+    <div id="log-drawer" class="log-drawer fixed-bottom" style="height: 0; transition: 0.3s; overflow: hidden;">
         <div class="container py-3 h-100 d-flex flex-column">
             <div class="d-flex justify-content-between mb-2">
                 <h6 class="text-white">System Logs</h6>
@@ -132,19 +134,19 @@
             <div class="row flex-grow-1 overflow-hidden">
                 <div class="col-md-6 h-100 d-flex flex-column">
                     <small class="text-muted">Wrapper Output</small>
-                    <div id="wrapper-logs" class="log-box flex-grow-1 bg-dark p-2 rounded text-monospace small overflow-auto text-success"></div>
+                    <div id="wrapper-logs" class="log-box flex-grow-1 p-2 rounded text-monospace small overflow-auto"></div>
                 </div>
                 <div class="col-md-6 h-100 d-flex flex-column">
                     <small class="text-muted">Downloader Output</small>
-                    <div id="downloader-logs" class="log-box flex-grow-1 bg-dark p-2 rounded text-monospace small overflow-auto text-info"></div>
+                    <div id="downloader-logs" class="log-box flex-grow-1 p-2 rounded text-monospace small overflow-auto"></div>
                 </div>
             </div>
             
-            <div id="login-form" class="d-none position-absolute top-50 start-50 translate-middle bg-dark p-3 rounded border shadow-lg" style="z-index: 2000;">
+            <div id="login-form" class="d-none position-absolute top-50 start-50 translate-middle p-3 rounded shadow-lg" style="z-index: 2000;">
                 <h5>Wrapper Login</h5>
                 <input id="email" class="form-control mb-2" placeholder="Email">
                 <input id="password" type="password" class="form-control mb-2" placeholder="Password">
-                <button id="submit-login" class="btn btn-primary w-100">Connect</button>
+                <button id="submit-login" class="btn btn-accent w-100">Connect</button>
             </div>
         </div>
     </div>
@@ -205,11 +207,11 @@
     </div>
 
     <div id="twofa-modal" class="d-none position-fixed top-0 start-0 w-100 h-100 bg-black bg-opacity-75 d-flex align-items-center justify-content-center" style="z-index: 4000;">
-        <div class="bg-dark p-4 rounded border text-center">
-            <h3>🔐 2FA Code</h3>
-            <p>Digite o código enviado ao dispositivo Apple</p>
+        <div class="modal-card p-4 text-center">
+            <h3 class="display-font">2FA Code</h3>
+            <p class="text-muted">Digite o código enviado ao dispositivo Apple</p>
             <input id="twofa-code" class="form-control text-center fs-3 mb-3" maxlength="6">
-            <button id="submit-2fa" class="btn btn-success w-100">Enviar</button>
+            <button id="submit-2fa" class="btn btn-accent w-100">Enviar</button>
         </div>
     </div>
 

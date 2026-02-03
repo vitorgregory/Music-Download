@@ -1,0 +1,15 @@
+{
+  "name": "Music-Download",
+  "description": "Apple Music Downloader Web UI",
+  "icon": "icon.png",
+  "version": "1.0.0",
+  "ports": [{"external": 5000, "internal": 5000, "protocol": "tcp"}],
+  "volumes": [
+    {"name": "data", "description": "Credentials & Queue DB"},
+    {"name": "downloads", "description": "Downloaded music files"},
+    {"name": "config", "description": "Apple Music config"}
+  ],
+  "environment": [
+    {"name": "TZ", "value": "America/Sao_Paulo"}
+  ]
+}

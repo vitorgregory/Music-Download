@@ -3,6 +3,12 @@ document.addEventListener("DOMContentLoaded", () => {
     setupEventListeners();
     // Inicia Loop de Estado
     setInterval(fetchState, 1500);
+    // Attach CSRF token for axios (if present)
+    try {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta) axios.defaults.headers.common['X-CSRFToken'] = meta.getAttribute('content');
+    } catch (e) { /* ignore */ }
+    // API key removed; no client-side header to attach.
 });
 
 let selectionOptions = [];
@@ -45,15 +51,43 @@ function setupEventListeners() {
 async function fetchState() {
     try {
         const res = await axios.get('/api/state');
-        const { wrapper, downloader, queue } = res.data;
+        const { wrapper, downloader, queue, wrapper_installed, downloader_installed } = res.data;
 
         updateWrapperUI(wrapper);
         updateDownloaderUI(downloader);
         updateQueueUI(queue);
 
+        // Show installation warnings
+        const warnContainer = getOrCreateWarnContainer();
+        warnContainer.innerHTML = '';
+        if (!wrapper_installed) {
+            const el = document.createElement('div');
+            el.className = 'alert alert-warning text-center mb-3';
+            el.textContent = 'Wrapper binary not found. Place the wrapper at ./wrapper/wrapper to enable login.';
+            warnContainer.appendChild(el);
+        }
+        if (!downloader_installed) {
+            const el = document.createElement('div');
+            el.className = 'alert alert-warning text-center mb-3';
+            el.textContent = 'Go downloader not found. Clone the apple-music-downloader project into ./apple-music-downloader.';
+            warnContainer.appendChild(el);
+        }
+
     } catch (e) {
         console.error("Sync Error:", e);
     }
+}
+
+function getOrCreateWarnContainer() {
+    let c = document.getElementById('install-warnings');
+    if (!c) {
+        c = document.createElement('div');
+        c.id = 'install-warnings';
+        const root = document.querySelector('.container');
+        if (root) root.parentNode.insertBefore(c, root);
+        else document.body.insertBefore(c, document.body.firstChild);
+    }
+    return c;
 }
 
 function updateWrapperUI(w) {
@@ -181,6 +215,8 @@ function renderGrid(container, items, isActiveTab) {
                    </div>`
                 : '';
 
+        const existingHtml = item.existing_path ? `<div class="text-truncate text-muted small" title="${item.existing_path}">Existe em: ${truncatePath(item.existing_path, 60)}</div>` : '';
+
         return `
         <div class="col-md-6 col-lg-4">
             <div class="queue-card p-3 d-flex align-items-center gap-3 position-relative overflow-hidden">
@@ -193,6 +229,7 @@ function renderGrid(container, items, isActiveTab) {
                         ${orderLabel}
                     </div>
                     <div class="text-truncate text-secondary small">${item.link}</div>
+                    ${existingHtml}
                     <div class="d-flex justify-content-between align-items-center mt-1">
                         <div>
                             <span class="badge badge-soft" style="font-size:0.7em">${item.format.toUpperCase()}</span>
@@ -336,6 +373,12 @@ function updateSelectionFilters(opts) {
 
     if (currentTag) tagFilter.value = currentTag;
     if (currentYear) yearFilter.value = currentYear;
+}
+
+function truncatePath(p, len) {
+    if (!p) return '';
+    if (p.length <= (len || 60)) return p;
+    return '...' + p.slice(- (len - 3));
 }
 
 function renderSelectionList() {
