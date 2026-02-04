@@ -1,4 +1,4 @@
-# Music Download - Apple Music Web UI (v7)
+# Music Download - Interface Web para Apple Music (v7)
 
 Baixe músicas do Apple Music em múltiplos formatos (ALAC, AAC, Atmos) via interface web Docker com fila inteligente, retry automático e seleção de faixas.
 
@@ -117,5 +117,7 @@ Apenas para uso educacional e pessoal. Respeite os Termos de Serviço do Apple.
 
 ## 🙏 Créditos
 
+
 - [@zhaarey](https://github.com/zhaarey) - apple-music-downloader + wrapper
 - Comunidade Open Source
+- Cliente recebe evento, auto-mostra modal com opções

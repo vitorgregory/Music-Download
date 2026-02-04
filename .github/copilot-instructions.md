@@ -235,22 +235,34 @@ curl http://localhost:5000/api/state | jq '.queue'
 4. **Logs capped**: ProcessManager stores max 300 entries; older entries discarded
 5. **Selection parsing**: Depends on specific table/list format from Go downloader; format changes break modal
 
-## Recent Changes (v6)
+## Recent Changes (v7 - Latest)
 
-✅ Task 1: Fixed "processing" card stuck issue
-- Added `is_complete()` fallback detector for completion
-- Refactored queue_worker to use multi-level checks (exit code → is_complete() → percentage)
-- Improved frontend progress monitoring with stalled warnings
+✅ Task 1: Fixed "processing" card stuck issue (RESOLVED)
+- Completely rewrote queue_worker (v4) with simple linear flow
+- Removed dependency on unreliable `downloader.running` flag
+- Loop now checks ONLY `process.poll() is not None` for exit detection
+- Fixed deque slicing errors in `extract_percentage()` and `find_error_in_logs()`
+- Cards now auto-transition to "Concluído" within seconds of download completion
+- No manual stop button click needed
 
-✅ Task 2: Restored selection modal for artist links
+✅ Task 2: Restored selection modal for artist links (RESOLVED)
 - Integrated Socket.IO for real-time selection events
 - Server emits `selection_required` when user choice detected
+- Expanded `selection_keywords` to catch variations: "please select", "select from", "options separated", "ranges supported"
 - Frontend modal auto-shows with parsed options
+- Works for single-track and artist/album selections
 
-✅ Task 3: Refactored UI from cards to table layout
+✅ Task 3: Refactored UI from cards to table layout (RESOLVED)
 - Converted queue display to Lidarr-style table (ID | Title | Status | % | Format | Actions)
 - Added status color indicators (left border: pending/processing/completed/failed)
 - Table responsive on mobile, progress bar updates in real-time
+- User confirmed: "very good, thanks, good work"
+
+✅ Infrastructure Updates (v7)
+- Added Flask-SocketIO and python-socketio to requirements.txt
+- Updated main.py with `allow_unsafe_werkzeug=True` for containerized Socket.IO
+- Deque-to-list conversion applied to all log processing functions
+- Docker rebuild with `--no-cache` ensures fresh code deployment
 
 ## Integration Points
 

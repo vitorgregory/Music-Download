@@ -126,7 +126,9 @@ def update_status(task_id, status, title=None, progress=None):
 
 def extract_percentage(logs):
     if not logs: return None
-    for line in reversed(logs[-10:]):
+    # Convert deque to list for slicing
+    log_list = list(logs) if hasattr(logs, '__iter__') else logs
+    for line in reversed(log_list[-10:]):
         match = re.search(r'(\d{1,3})%', line)
         if match: return match.group(1)
     return None
@@ -135,8 +137,11 @@ def find_error_in_logs(logs):
     """Analisa logs procurando o motivo real da falha"""
     if not logs: return "Erro desconhecido"
     
+    # Convert deque to list for slicing
+    log_list = list(logs) if hasattr(logs, '__iter__') else logs
+    
     # Procura do fim para o começo
-    for line in reversed(logs[-50:]):
+    for line in reversed(log_list[-50:]):
         l = line.lower()
         
         # Erros Críticos de DRM/Codec
@@ -182,27 +187,44 @@ def locate_existing_file(task_id):
     return None
 
 def queue_worker():
-    print("[SYSTEM] Queue Worker V3.3 (Error Detection) Iniciado")
+    """
+    Simple, reliable queue worker.
+    - Pick next pending task
+    - Start downloader process
+    - Wait for process to complete
+    - Check exit code immediately
+    - Mark complete or handle failure
+    """
+    print("[SYSTEM] Queue Worker V4 (Rewritten) Iniciado")
     init_db()
     
     while not WORKER_STOP_EVENT.is_set():
         try:
-            if QUEUE_PAUSED or downloader.running:
-                # Sleep but wake early if stop requested
+            # Skip if paused or already processing
+            if QUEUE_PAUSED:
+                for _ in range(20):
+                    if WORKER_STOP_EVENT.is_set(): break
+                    time.sleep(0.1)
+                continue
+            
+            # Wait if downloader is busy
+            if downloader.running:
                 for _ in range(10):
                     if WORKER_STOP_EVENT.is_set(): break
                     time.sleep(0.1)
                 continue
 
+            # Pick next pending task
             conn = get_db_connection()
             now = datetime.now()
-            # Only select tasks that are pending and whose `next_try_at` is either NULL
-            # (never tried) or scheduled to run now/past. This ensures exponential backoff
-            # scheduling is respected and we don't pick tasks that are waiting for retry.
-            task = conn.execute("SELECT * FROM queue WHERE status = 'pending' AND (next_try_at IS NULL OR next_try_at <= ?) ORDER BY position ASC, id ASC LIMIT 1", (now,)).fetchone()
+            task = conn.execute(
+                "SELECT * FROM queue WHERE status = 'pending' AND (next_try_at IS NULL OR next_try_at <= ?) ORDER BY position ASC, id ASC LIMIT 1",
+                (now,)
+            ).fetchone()
             conn.close()
 
             if not task:
+                # No pending tasks, sleep
                 for _ in range(20):
                     if WORKER_STOP_EVENT.is_set(): break
                     time.sleep(0.1)
@@ -215,99 +237,110 @@ def queue_worker():
                 update_status(current_id, "failed", progress="Link Inválido")
                 continue
 
-            print(f"[QUEUE] Iniciando Tarefa #{current_id}")
+            # Start download
+            print(f"[QUEUE] Task #{current_id}: Starting download")
             update_status(current_id, "processing", progress="0")
             
             args = []
-            if task['format'] == "atmos": args = ["--atmos"]
-            elif task['format'] == "aac": args = ["--aac"]
+            if task['format'] == "atmos":
+                args = ["--atmos"]
+            elif task['format'] == "aac":
+                args = ["--aac"]
             
-            if downloader.start(link, args):
-                last_perc = "0"
-                has_critical_error = False
-                stall_detected = False
-                
-                # Main processing loop: wait until downloader stops
-                while downloader.running:
-                    # Real-time critical error monitoring
-                    # If "no codec found" appears, we know it will fail
-                    if not has_critical_error:
-                        for line in downloader.logs[-5:]:
-                            if "no codec found" in line.lower():
-                                has_critical_error = True
-                    
-                    # Extract and update progress percentage
-                    new_perc = extract_percentage(downloader.logs)
-                    if new_perc:
-                        last_perc = new_perc
-                        update_status(current_id, "processing", progress=new_perc)
-
-                    # Detect stalled task: no output for configured timeout
-                    try:
-                        if getattr(downloader, 'last_output_at', None) is not None:
-                            if time.time() - downloader.last_output_at > STALL_TIMEOUT_SECONDS:
-                                stall_detected = True
-                                print(f"[QUEUE] Detected stall for task #{current_id} (no output for {STALL_TIMEOUT_SECONDS}s)")
-                                downloader.stop()
-                                break
-                    except Exception:
-                        pass
-                    
-                    # Sleep in small increments to allow quick response to stop event
-                    for _ in range(10):
-                        if WORKER_STOP_EVENT.is_set(): break
-                        time.sleep(0.1)
-                
-                # --- POST-COMPLETION ANALYSIS ---
-                # Check if task was cancelled by user
-                conn_check = get_db_connection()
-                db_state = conn_check.execute("SELECT status FROM queue WHERE id = ?", (current_id,)).fetchone()
-                conn_check.close()
-
-                if db_state and db_state['status'] == "cancelled":
-                    continue
-
-                # If stall was detected, mark as failure
-                if stall_detected:
-                    _handle_failure(current_id, f"Tarefa travada: sem saída por {STALL_TIMEOUT_SECONDS}s")
-                    continue
-
-                # Determine if download succeeded or failed
-                # Priority: 1) process exit code, 2) is_complete() check, 3) percentage & logs
-                process_exit_ok = (downloader.process and downloader.process.poll() == 0)
-                is_truly_complete = downloader.is_complete()
-                
-                # Final percentage fallback
-                final_perc = extract_percentage(downloader.logs)
-                if final_perc:
-                    last_perc = final_perc
-                
-                # SUCCESS: process exited cleanly (0) OR is_complete() detected completion pattern
-                if process_exit_ok or (is_truly_complete and last_perc == "100"):
-                    update_status(current_id, "completed", progress="100")
-                # SPECIAL CASE: track already exists locally
-                elif "already exists" in "\n".join(downloader.logs[-50:]).lower():
-                    path = locate_existing_file(current_id)
-                    if path:
-                        print(f"[QUEUE] Track exists locally: {path}")
-                        update_status(current_id, 'completed', progress=f"Exists at {path}")
-                    else:
-                        print("[QUEUE] Track exists but file not found on disk")
-                        _handle_failure(current_id, 'Exists locally (not found)')
-                # FAILURE: analyze and decide retry vs dead-letter
-                else:
-                    error_msg = find_error_in_logs(downloader.logs)
-                    print(f"[QUEUE] Task #{current_id} failed: {error_msg}")
-                    _handle_failure(current_id, error_msg)
-            else:
-                # Failed to start the downloader process - transient error, will retry
+            if not downloader.start(link, args):
+                print(f"[QUEUE] Task #{current_id}: Failed to start downloader")
                 _handle_failure(current_id, "Falha ao iniciar")
+                continue
+
+            # SIMPLE LOOP: Just monitor progress and stalls
+            # Exit when: process completes, stall detected, or user cancels
+            stall_detected = False
+            last_perc = "0"
+            
+            while True:
+                # Check if process still running
+                if not downloader.process or downloader.process.poll() is not None:
+                    # Process exited!
+                    break
+                
+                # Check if user cancelled
+                conn_check = get_db_connection()
+                db_status = conn_check.execute("SELECT status FROM queue WHERE id = ?", (current_id,)).fetchone()
+                conn_check.close()
+                if db_status and db_status['status'] == "cancelled":
+                    print(f"[QUEUE] Task #{current_id}: Cancelled by user")
+                    break
+                
+                # Update progress
+                new_perc = extract_percentage(downloader.logs)
+                if new_perc and new_perc != last_perc:
+                    last_perc = new_perc
+                    update_status(current_id, "processing", progress=new_perc)
+                
+                # Check for stall (no output for N seconds)
+                if hasattr(downloader, 'last_output_at') and downloader.last_output_at:
+                    elapsed = time.time() - downloader.last_output_at
+                    if elapsed > STALL_TIMEOUT_SECONDS:
+                        print(f"[QUEUE] Task #{current_id}: Stalled (no output for {int(elapsed)}s)")
+                        stall_detected = True
+                        downloader.stop()
+                        break
+                
+                # Brief sleep
+                time.sleep(0.5)
+
+            # TASK COMPLETE - Determine outcome
+            print(f"[QUEUE] Task #{current_id}: Process exited, analyzing result...")
+            
+            # Check if user cancelled
+            conn_check = get_db_connection()
+            db_status = conn_check.execute("SELECT status FROM queue WHERE id = ?", (current_id,)).fetchone()
+            conn_check.close()
+            if db_status and db_status['status'] == "cancelled":
+                print(f"[QUEUE] Task #{current_id}: Skipping (already cancelled)")
+                continue
+            
+            # If stall was detected
+            if stall_detected:
+                print(f"[QUEUE] Task #{current_id}: Marked as stalled failure")
+                _handle_failure(current_id, f"Tarefa travada (sem saída por {STALL_TIMEOUT_SECONDS}s)")
+                continue
+            
+            # Get final exit code
+            exit_code = downloader.process.returncode if downloader.process else -1
+            print(f"[QUEUE] Task #{current_id}: Exit code = {exit_code}")
+            
+            # SUCCESS if exit code is 0
+            if exit_code == 0:
+                print(f"[QUEUE] Task #{current_id}: COMPLETED ✓")
+                update_status(current_id, "completed", progress="100")
+                continue
+            
+            # Check for "already exists" case
+            log_text = "\n".join(downloader.logs[-50:]).lower()
+            if "already exists" in log_text or "track already exists" in log_text:
+                path = locate_existing_file(current_id)
+                if path:
+                    print(f"[QUEUE] Task #{current_id}: Track exists at {path}")
+                    update_status(current_id, 'completed', progress=f"Exists at {path}")
+                else:
+                    print(f"[QUEUE] Task #{current_id}: Track exists but file not found")
+                    _handle_failure(current_id, 'Exists locally (not found)')
+                continue
+            
+            # FAILURE: Analyze error
+            error_msg = find_error_in_logs(downloader.logs)
+            print(f"[QUEUE] Task #{current_id}: FAILED - {error_msg}")
+            _handle_failure(current_id, error_msg)
             
         except Exception as e:
+            import traceback
             print(f"[QUEUE ERROR] {e}")
+            traceback.print_exc()
             for _ in range(50):
                 if WORKER_STOP_EVENT.is_set(): break
                 time.sleep(0.1)
+
 
 
 def start_worker():

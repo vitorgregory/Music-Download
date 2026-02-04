@@ -164,14 +164,22 @@ class DownloaderManager(ProcessManager):
         # Pré-compila Regex para performance
         self.re_table = re.compile(r"^\s*\|\s*(\d+)\s*\|")
         self.re_list = re.compile(r"(?:^|\s|\[\w+\]\s+)(\d+)\s*[\.\:\-\)\]]\s+(.+)$")
-        self.selection_keywords = ["select:", "enter choice", "choice:", "selection:"]
+        self.selection_keywords = [
+            "select:", "enter choice", "choice:", "selection:",
+            "select item", "select items", "select a number", "enter a number",
+            "choose:", "choose a number", "selecione", "escolha",
+            "please select", "select from", "select all",
+            "options separated", "ranges supported"
+        ]
         self.re_date = re.compile(r"\b(\d{4}([-/.]\d{2}([-/.]\d{2})?)?)\b")
         self.re_duration = re.compile(r"\b(\d{1,2}:\d{2})\b")
 
     def _split_table_row(self, clean):
-        if "|" not in clean:
+        # Support unicode box drawing table separators (│)
+        normalized = clean.replace("│", "|")
+        if "|" not in normalized:
             return None
-        cells = [c.strip() for c in clean.strip().strip("|").split("|")]
+        cells = [c.strip() for c in normalized.strip().strip("|").split("|")]
         if not cells or not cells[0].isdigit():
             return None
         return cells
@@ -282,8 +290,11 @@ class DownloaderManager(ProcessManager):
         # Analisa os últimos logs em busca de tabelas ou listas
         for line in reversed(buffer[-50:]):
             clean = strip_ansi(line).strip()
-            if not clean or any(k in clean.lower() for k in self.selection_keywords): continue
-            if "+---" in clean or "ALBUM NAME" in clean: continue
+            if not clean or any(k in clean.lower() for k in self.selection_keywords):
+                continue
+            # Ignore table separators (ASCII or unicode box drawing)
+            if "+---" in clean or "ALBUM NAME" in clean or "─" in clean or "┼" in clean or "┌" in clean or "└" in clean:
+                continue
             
             # Tenta Tabela
             m = self.re_table.search(clean)
@@ -336,19 +347,56 @@ class DownloaderManager(ProcessManager):
 
                 # Detecção de Input
                 if any(k in clean_line for k in self.selection_keywords):
+                    with self._lock:
+                        self.needs_input = True
+                    
+                    # Try to parse options immediately
                     options = self._parse_options(log_buffer)
                     if options:
                         with self._lock:
                             self.input_options = options
-                            self.needs_input = True
                         self._log(">>> AGUARDANDO SELEÇÃO DO USUÁRIO <<<")
-                        
                         # Emit Socket.IO event to notify frontend of selection required
                         try:
                             from . import socketio
                             socketio.emit('selection_required', {
                                 'options': options,
                                 'options_count': len(options)
+                            }, broadcast=True)
+                        except Exception as e:
+                            self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")
+                    else:
+                        # Options will come in next lines, wait for them
+                        self._log(">>> PROMPT DETECTADO, AGUARDANDO OPÇÕES <<<")
+
+                # If prompt arrived before options, keep retrying as new lines arrive
+                if self.needs_input and not self.input_options:
+                    retry_options = self._parse_options(log_buffer)
+                    if retry_options:
+                        with self._lock:
+                            self.input_options = retry_options
+                        self._log(">>> OPÇÕES DETECTADAS, AGUARDANDO SELEÇÃO <<<")
+                        try:
+                            from . import socketio
+                            socketio.emit('selection_required', {
+                                'options': retry_options,
+                                'options_count': len(retry_options)
+                            }, broadcast=True)
+                        except Exception as e:
+                            self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")
+
+                # If prompt arrived before options, retry parse as new lines arrive
+                if self.needs_input and not self.input_options:
+                    retry_options = self._parse_options(log_buffer)
+                    if retry_options:
+                        with self._lock:
+                            self.input_options = retry_options
+                        self._log(">>> OPÇÕES DETECTADAS, AGUARDANDO SELEÇÃO <<<")
+                        try:
+                            from . import socketio
+                            socketio.emit('selection_required', {
+                                'options': retry_options,
+                                'options_count': len(retry_options)
                             }, broadcast=True)
                         except Exception as e:
                             self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")
