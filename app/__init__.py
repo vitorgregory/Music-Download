@@ -3,6 +3,7 @@ import os
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_socketio import SocketIO
 
 app = Flask(__name__)
 
@@ -44,6 +45,9 @@ except Exception as e:
 	warnings.warn(f"Failed to initialize rate limiter storage ({e}); falling back to in-memory storage.")
 	limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"]) 
 	limiter.init_app(app)
+
+# Socket.IO for real-time events
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Expose `csrf_token()` in templates
 app.jinja_env.globals['csrf_token'] = generate_csrf

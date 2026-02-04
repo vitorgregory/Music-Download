@@ -8,8 +8,47 @@ document.addEventListener("DOMContentLoaded", () => {
         const meta = document.querySelector('meta[name="csrf-token"]');
         if (meta) axios.defaults.headers.common['X-CSRFToken'] = meta.getAttribute('content');
     } catch (e) { /* ignore */ }
-    // API key removed; no client-side header to attach.
+    
+    // Initialize Socket.IO for real-time selection events
+    initializeSocketIO();
 });
+
+// Socket.IO event handling
+function initializeSocketIO() {
+    try {
+        // Try to connect to Socket.IO server
+        const socket = io();
+        
+        // Listen for selection_required event from server
+        socket.on('selection_required', (data) => {
+            console.log('Selection required event received:', data);
+            if (data.options && Array.isArray(data.options)) {
+                // Sync the options with frontend
+                syncSelectionOptions(data.options);
+                // Show the selection area
+                const selArea = document.getElementById('selection-area');
+                if (selArea) {
+                    selArea.classList.remove('d-none');
+                    // Auto-focus search if available
+                    const searchBox = document.getElementById('selection-search');
+                    if (searchBox) setTimeout(() => searchBox.focus(), 100);
+                }
+            }
+        });
+        
+        // Connection status logging
+        socket.on('connect', () => {
+            console.log('[Socket.IO] Connected to server');
+        });
+        
+        socket.on('disconnect', () => {
+            console.log('[Socket.IO] Disconnected from server');
+        });
+        
+    } catch (e) {
+        console.warn('Socket.IO initialization failed (not critical):', e);
+    }
+}
 
 let selectionOptions = [];
 let selectionSignature = "";
@@ -143,8 +182,8 @@ function updateDownloaderUI(d) {
 }
 
 function updateQueueUI(q) {
-    const gridActive = document.getElementById('queue-grid-active');
-    const gridHistory = document.getElementById('queue-grid-history');
+    const tableActive = document.getElementById('queue-table-active');
+    const tableHistory = document.getElementById('queue-table-history');
     
     // Pause Button State
     const pBtn = document.getElementById('pause-btn');
@@ -160,91 +199,96 @@ function updateQueueUI(q) {
     document.getElementById('count-active').innerText = activeItems.length;
     document.getElementById('count-history').innerText = historyItems.length;
 
-    // Render Cards
+    // Render Table Rows
     activeItems = activeItems.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-    renderGrid(gridActive, activeItems, true);
-    renderGrid(gridHistory, historyItems, false);
+    renderQueueTable(tableActive, activeItems, true);
+    renderQueueTable(tableHistory, historyItems, false);
 }
 
-function renderGrid(container, items, isActiveTab) {
+function renderQueueTable(container, items, isActiveTab) {
     if (!items.length) {
-        container.innerHTML = `<div class="text-center text-secondary py-5 w-100">Nada aqui.</div>`;
+        container.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">Nenhum item</td></tr>`;
         return;
     }
 
-    const html = items.map((item, index) => {
+    const rows = items.map((item, index) => {
         const progress = item.progress || "0";
-        let statusColor = "secondary";
-        let icon = "clock";
+        const progressValue = Number(progress);
+        const isValidProgress = Number.isFinite(progressValue);
+        const progressPercent = isValidProgress ? Math.min(Math.max(progressValue, 0), 100) : 0;
         
-        if (item.status === 'processing') { statusColor = "warning text-dark"; icon = "spinner fa-spin"; }
-        if (item.status === 'completed') { statusColor = "success"; icon = "check"; }
-        if (item.status === 'failed') { statusColor = "danger"; icon = "triangle-exclamation"; }
-        if (item.status === 'cancelled') { statusColor = "danger"; icon = "ban"; }
-
-        let title = item.title === "Aguardando metadados..." ? "Carregando..." : item.title;
-
-        // Lógica de Mensagem
-        let statusMsg = "";
-        if (item.status === 'processing') {
-            statusMsg = Number.isFinite(Number(progress))
-                ? `<small class="text-warning fw-bold">${progress}%</small>`
-                : `<small class="text-warning fw-bold">Processando</small>`;
-        } else if (item.status === 'pending') {
-            statusMsg = `<small class="text-muted fw-bold">Na fila</small>`;
-        } else if (item.status === 'failed' || item.status === 'cancelled') {
-            // Mostra o erro em vermelho
-            statusMsg = `<small class="text-danger fw-bold" style="font-size:0.75em;" title="${progress}">${progress}</small>`;
-        } else if (item.status === 'completed') {
-            statusMsg = `<small class="text-success fw-bold">Concluído</small>`;
+        let statusBadge = "";
+        let statusClass = "";
+        
+        if (item.status === 'processing') { 
+            statusBadge = '<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> Processando</span>';
+            statusClass = "status-processing";
+        } else if (item.status === 'completed') { 
+            statusBadge = '<span class="badge bg-success"><i class="fas fa-check"></i> Concluído</span>';
+            statusClass = "status-completed";
+        } else if (item.status === 'failed') { 
+            statusBadge = '<span class="badge bg-danger"><i class="fas fa-times"></i> Falha</span>';
+            statusClass = "status-failed";
+        } else if (item.status === 'cancelled') { 
+            statusBadge = '<span class="badge bg-danger"><i class="fas fa-ban"></i> Cancelado</span>';
+            statusClass = "status-failed";
+        } else if (item.status === 'pending') { 
+            statusBadge = '<span class="badge bg-secondary"><i class="fas fa-clock"></i> Na fila</span>';
+            statusClass = "status-pending";
         }
 
-        const orderLabel = isActiveTab ? `<span class="queue-order">#${index + 1}</span>` : '';
-        const progressValue = Number(progress);
-        const progressPercent = Number.isFinite(progressValue) ? Math.min(Math.max(progressValue, 0), 100) : 0;
-        const progressBar = item.status === 'processing'
-            ? `<div class="card-progress-bg" style="width:${progressPercent}%"></div>`
-            : '';
-        const actionButtons = item.status === 'processing'
-            ? `<button onclick="stopTask(${item.id})" class="btn btn-link text-danger position-absolute top-0 end-0 p-2"><i class="fas fa-stop-circle"></i></button>`
-            : item.status === 'pending'
-                ? `<div class="queue-actions position-absolute top-0 end-0 p-2">
-                        <button onclick="moveTask(${item.id}, 'up')" class="btn btn-sm btn-dark"><i class="fas fa-arrow-up"></i></button>
-                        <button onclick="moveTask(${item.id}, 'down')" class="btn btn-sm btn-dark"><i class="fas fa-arrow-down"></i></button>
-                        <button onclick="cancelTask(${item.id}, 'pending')" class="btn btn-sm btn-outline-danger"><i class="fas fa-ban"></i></button>
-                   </div>`
-                : '';
+        let title = item.title === "Aguardando metadados..." ? "Carregando..." : item.title;
+        const progressDisplay = isValidProgress ? `${progressPercent}%` : "—";
+        
+        // Action buttons
+        let actionHtml = "";
+        if (item.status === 'processing') {
+            actionHtml = `<button onclick="stopTask(${item.id})" class="btn btn-sm btn-danger" title="Parar"><i class="fas fa-stop-circle"></i></button>`;
+        } else if (item.status === 'pending') {
+            actionHtml = `
+                <div class="btn-group btn-group-sm" role="group">
+                    <button onclick="moveTask(${item.id}, 'up')" class="btn btn-outline-secondary" title="Acima"><i class="fas fa-arrow-up"></i></button>
+                    <button onclick="moveTask(${item.id}, 'down')" class="btn btn-outline-secondary" title="Abaixo"><i class="fas fa-arrow-down"></i></button>
+                    <button onclick="cancelTask(${item.id}, 'pending')" class="btn btn-outline-danger" title="Cancelar"><i class="fas fa-ban"></i></button>
+                </div>
+            `;
+        } else {
+            actionHtml = `<button onclick="deleteHistory(${item.id})" class="btn btn-sm btn-outline-secondary" title="Remover"><i class="fas fa-trash"></i></button>`;
+        }
 
-        const existingHtml = item.existing_path ? `<div class="text-truncate text-muted small" title="${item.existing_path}">Existe em: ${truncatePath(item.existing_path, 60)}</div>` : '';
-
+        const formatBadge = `<span class="badge badge-soft">${item.format.toUpperCase()}</span>`;
+        
         return `
-        <div class="col-md-6 col-lg-4">
-            <div class="queue-card p-3 d-flex align-items-center gap-3 position-relative overflow-hidden">
-                <div class="d-flex align-items-center justify-content-center queue-icon" style="width:50px; height:50px; flex-shrink:0;">
-                    <i class="fas fa-music fa-lg"></i>
-                </div>
-                <div class="flex-grow-1 overflow-hidden" style="min-width:0;">
-                    <div class="d-flex justify-content-between">
-                        <div class="track-title text-truncate fw-semibold" title="${title}">${title}</div>
-                        ${orderLabel}
-                    </div>
-                    <div class="text-truncate text-secondary small">${item.link}</div>
-                    ${existingHtml}
-                    <div class="d-flex justify-content-between align-items-center mt-1">
-                        <div>
-                            <span class="badge badge-soft" style="font-size:0.7em">${item.format.toUpperCase()}</span>
-                            <span class="badge bg-${statusColor}" style="font-size:0.7em"><i class="fas fa-${icon}"></i> ${item.status}</span>
-                        </div>
-                        ${statusMsg}
-                    </div>
-                </div>
-                ${progressBar}
-                ${actionButtons}
-            </div>
-        </div>`;
+            <tr class="queue-row ${statusClass}">
+                <td><small>#${item.id}</small></td>
+                <td>
+                    <div class="text-truncate" title="${title}"><strong>${title}</strong></div>
+                    <small class="text-muted text-truncate d-block" title="${item.link}">${item.link}</small>
+                    ${item.existing_path ? `<small class="text-success d-block"><i class="fas fa-check-circle"></i> ${truncatePath(item.existing_path, 40)}</small>` : ''}
+                </td>
+                <td>${statusBadge}</td>
+                <td>
+                    ${item.status === 'processing' 
+                        ? `<div class="progress" style="height: 20px;"><div class="progress-bar" style="width: ${progressPercent}%">${progressDisplay}</div></div>`
+                        : `<small>${progressDisplay}</small>`
+                    }
+                </td>
+                <td>${formatBadge}</td>
+                <td>${actionHtml}</td>
+            </tr>
+        `;
     }).join('');
 
-    if (container.innerHTML !== html) container.innerHTML = html;
+    container.innerHTML = rows;
+}
+
+// New function to remove items from history
+function deleteHistory(id) {
+    if(confirm("Remover item do histórico?")) {
+        // Mark as deleted by moving to a special status or just hide
+        // For now, we can call cancel to keep consistency
+        axios.post('/api/cancel_task', {id, status: 'history'}).catch(() => {});
+    }
 }
 
 // --- ACTIONS ---

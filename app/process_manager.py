@@ -343,6 +343,17 @@ class DownloaderManager(ProcessManager):
                             self.needs_input = True
                         self._log(">>> AGUARDANDO SELEÇÃO DO USUÁRIO <<<")
                         
+                        # Emit Socket.IO event to notify frontend of selection required
+                        try:
+                            from . import socketio
+                            socketio.emit('selection_required', {
+                                'options': options,
+                                'options_count': len(options)
+                            }, broadcast=True)
+                        except Exception as e:
+                            self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")
+
+                        
         finally:
             with self._lock:
                 self.running = False

@@ -227,14 +227,16 @@ def queue_worker():
                 has_critical_error = False
                 stall_detected = False
                 
+                # Main processing loop: wait until downloader stops
                 while downloader.running:
-                    # Monitoramento em tempo real de erros críticos
-                    # Se aparecer "no codec found" enquanto roda, já sabemos que vai falhar
+                    # Real-time critical error monitoring
+                    # If "no codec found" appears, we know it will fail
                     if not has_critical_error:
-                         for line in downloader.logs[-5:]:
-                             if "no codec found" in line.lower():
-                                 has_critical_error = True
+                        for line in downloader.logs[-5:]:
+                            if "no codec found" in line.lower():
+                                has_critical_error = True
                     
+                    # Extract and update progress percentage
                     new_perc = extract_percentage(downloader.logs)
                     if new_perc:
                         last_perc = new_perc
@@ -251,11 +253,13 @@ def queue_worker():
                     except Exception:
                         pass
                     
+                    # Sleep in small increments to allow quick response to stop event
                     for _ in range(10):
                         if WORKER_STOP_EVENT.is_set(): break
                         time.sleep(0.1)
                 
-                # --- ANÁLISE PÓS-MORTE ---
+                # --- POST-COMPLETION ANALYSIS ---
+                # Check if task was cancelled by user
                 conn_check = get_db_connection()
                 db_state = conn_check.execute("SELECT status FROM queue WHERE id = ?", (current_id,)).fetchone()
                 conn_check.close()
@@ -263,51 +267,40 @@ def queue_worker():
                 if db_state and db_state['status'] == "cancelled":
                     continue
 
+                # If stall was detected, mark as failure
                 if stall_detected:
                     _handle_failure(current_id, f"Tarefa travada: sem saída por {STALL_TIMEOUT_SECONDS}s")
                     continue
 
-                # Final percentage fallback: re-extract from logs in case worker missed an update
+                # Determine if download succeeded or failed
+                # Priority: 1) process exit code, 2) is_complete() check, 3) percentage & logs
+                process_exit_ok = (downloader.process and downloader.process.poll() == 0)
+                is_truly_complete = downloader.is_complete()
+                
+                # Final percentage fallback
                 final_perc = extract_percentage(downloader.logs)
                 if final_perc:
                     last_perc = final_perc
-
-                # Sucesso APENAS se chegou em 100% E não teve erro crítico detectado
-                if last_perc == "100" and not has_critical_error:
-                    update_status(current_id, "completed", progress="100")
-                else:
-                    # Falhou -> decide retry or dead-letter
-                        error_msg = find_error_in_logs(downloader.logs)
-                        # Detect 'already exists' case explicitly and try to locate the file
-                        joined = "\n".join(downloader.logs[-50:]).lower()
-                        if 'already exists' in joined or 'track already exists' in joined:
-                            path = locate_existing_file(current_id)
-                            if path:
-                                print(f"[QUEUE] Track exists locally: {path}")
-                                update_status(current_id, 'completed', progress=f"Exists at {path}")
-                            else:
-                                print("[QUEUE] Track exists but file not found on disk")
-                                _handle_failure(current_id, 'Exists locally (not found)')
-                        else:
-                            print(f"[QUEUE] Falha marcada: {error_msg}")
-                            _handle_failure(current_id, error_msg)
-
-            if downloader.process.poll() is not None:
-                return_code = downloader.process.returncode
-                if return_code == 0:
-                    update_status(current_id, "completed", progress="100")
-                else:
-                    _handle_failure(current_id, f"Process exit {return_code}")
-# 2. Timeout (seu stall já funciona)
-            elif stall_detected:
-                _handle_failure(current_id, f"Tarefa travada")
-
-# 3. is_complete() como fallback FINAL
-            elif downloader.is_complete():
-                update_status(current_id, "completed", progress="100")         
                 
+                # SUCCESS: process exited cleanly (0) OR is_complete() detected completion pattern
+                if process_exit_ok or (is_truly_complete and last_perc == "100"):
+                    update_status(current_id, "completed", progress="100")
+                # SPECIAL CASE: track already exists locally
+                elif "already exists" in "\n".join(downloader.logs[-50:]).lower():
+                    path = locate_existing_file(current_id)
+                    if path:
+                        print(f"[QUEUE] Track exists locally: {path}")
+                        update_status(current_id, 'completed', progress=f"Exists at {path}")
+                    else:
+                        print("[QUEUE] Track exists but file not found on disk")
+                        _handle_failure(current_id, 'Exists locally (not found)')
+                # FAILURE: analyze and decide retry vs dead-letter
+                else:
+                    error_msg = find_error_in_logs(downloader.logs)
+                    print(f"[QUEUE] Task #{current_id} failed: {error_msg}")
+                    _handle_failure(current_id, error_msg)
             else:
-                # Failed to start - treat as transient and schedule retry
+                # Failed to start the downloader process - transient error, will retry
                 _handle_failure(current_id, "Falha ao iniciar")
             
         except Exception as e:

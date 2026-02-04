@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body>
@@ -112,10 +113,42 @@
 
         <div class="tab-content" id="pills-tabContent">
             <div class="tab-pane fade show active" id="pills-active">
-                <div id="queue-grid-active" class="row g-3"></div>
+                <div class="queue-table-container">
+                    <table class="table table-hover table-sm queue-table">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 5%;">ID</th>
+                                <th style="width: 40%;">Título</th>
+                                <th style="width: 12%;">Status</th>
+                                <th style="width: 10%;">%</th>
+                                <th style="width: 15%;">Formato</th>
+                                <th style="width: 18%;">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queue-table-active">
+                            <tr><td colspan="6" class="text-center text-muted py-4">Nenhum download ativo</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
             <div class="tab-pane fade" id="pills-history">
-                <div id="queue-grid-history" class="row g-3"></div>
+                <div class="queue-table-container">
+                    <table class="table table-hover table-sm queue-table">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 5%;">ID</th>
+                                <th style="width: 40%;">Título</th>
+                                <th style="width: 12%;">Status</th>
+                                <th style="width: 10%;">%</th>
+                                <th style="width: 15%;">Formato</th>
+                                <th style="width: 18%;">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queue-table-history">
+                            <tr><td colspan="6" class="text-center text-muted py-4">Histórico vazio</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
