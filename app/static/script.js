@@ -3,6 +3,8 @@ document.addEventListener("DOMContentLoaded", () => {
     setupEventListeners();
     // Inicia Loop de Estado
     setInterval(fetchState, 1500);
+    // Inicia detector de queda de internet e reconexão automática
+    initializeOfflineDetection();
     // Attach CSRF token for axios (if present)
     try {
         const meta = document.querySelector('meta[name="csrf-token"]');
@@ -13,7 +15,51 @@ document.addEventListener("DOMContentLoaded", () => {
     initializeSocketIO();
 });
 
-// Socket.IO event handling
+// --- OFFLINE DETECTION & AUTO-RECONNECT ---
+let offlineRetryCount = 0;
+const MAX_OFFLINE_RETRIES = 3;
+let lastConnectedStatus = null;
+
+function initializeOfflineDetection() {
+    // Detecta mudanças de status online/offline do navegador
+    window.addEventListener('online', () => {
+        console.log('[Offline Detection] Internet restaurada');
+        offlineRetryCount = 0;
+        // Tenta reconectar imediatamente
+        attemptOfflineReconnect();
+    });
+    
+    window.addEventListener('offline', () => {
+        console.log('[Offline Detection] Internet perdida');
+        offlineRetryCount = 0;
+    });
+}
+
+async function attemptOfflineReconnect() {
+    if (offlineRetryCount >= MAX_OFFLINE_RETRIES) {
+        console.log('[Offline Reconnect] Tentativas exauridas');
+        return;
+    }
+    
+    try {
+        console.log('[Offline Reconnect] Tentativa ' + (offlineRetryCount + 1));
+        const res = await axios.post('/reconnect_offline');
+        if (res.data.status === 'ok') {
+            console.log('[Offline Reconnect] Reconectado com sucesso');
+            console.log('[Offline Reconnect] 2FA cache usado:', res.data.used_2fa_cache);
+            offlineRetryCount = 0;
+        }
+    } catch (e) {
+        offlineRetryCount++;
+        console.log('[Offline Reconnect] Falha - Tentativa ' + offlineRetryCount + '/' + MAX_OFFLINE_RETRIES);
+        if (offlineRetryCount < MAX_OFFLINE_RETRIES) {
+            // Tenta novamente após 3 segundos
+            setTimeout(attemptOfflineReconnect, 3000);
+        }
+    }
+}
+
+
 function initializeSocketIO() {
     try {
         // Try to connect to Socket.IO server
@@ -92,6 +138,17 @@ async function fetchState() {
         const res = await axios.get('/api/state');
         const { wrapper, downloader, queue, wrapper_installed, downloader_installed } = res.data;
 
+        // Reset offline retry count on successful connection
+        offlineRetryCount = 0;
+        
+        // Detecta se wrapper caiu e tenta reconectar
+        if (!wrapper.running && lastConnectedStatus && lastConnectedStatus.running) {
+            console.log('[Offline Detection] Wrapper desconectou - tentando reconectar offline');
+            setTimeout(() => attemptOfflineReconnect(), 1000);
+        }
+        
+        lastConnectedStatus = wrapper;
+
         updateWrapperUI(wrapper);
         updateDownloaderUI(downloader);
         updateQueueUI(queue);
@@ -114,6 +171,11 @@ async function fetchState() {
 
     } catch (e) {
         console.error("Sync Error:", e);
+        // Detecta erros de conexão (network error, timeout, etc)
+        if (e.code === 'ECONNABORTED' || e.code === 'ENOTFOUND' || e.message.includes('Network') || e.message.includes('timeout')) {
+            console.log('[Offline Detection] Erro de conexão detectado - tentando reconectar');
+            attemptOfflineReconnect();
+        }
     }
 }
 
@@ -395,25 +457,47 @@ function syncSelectionOptions(opts) {
 function updateSelectionFilters(opts) {
     const tagFilter = document.getElementById('selection-tag-filter');
     const yearFilter = document.getElementById('selection-year-filter');
+    const typeFilter = document.getElementById('selection-type-filter');
     if (!tagFilter || !yearFilter) return;
 
     const tags = new Set();
     const years = new Set();
+    const types = new Set();
+    
     opts.forEach((opt) => {
+        // Extrair tags
         (opt.tags || []).forEach((tag) => tags.add(tag));
+        
+        // Extrair anos
         if (opt.date) {
             const yearMatch = opt.date.match(/\b(\d{4})\b/);
             if (yearMatch) years.add(yearMatch[1]);
+        }
+        
+        // Extrair tipos
+        if (opt.type) {
+            types.add(opt.type);
         }
     });
 
     const currentTag = tagFilter.value;
     const currentYear = yearFilter.value;
+    const currentType = typeFilter?.value;
 
+    // Atualizar filtro de tags
     tagFilter.innerHTML = '<option value="">Todas as edições</option>' +
         Array.from(tags).sort().map(tag => `<option value="${tag}">${tag}</option>`).join('');
+    
+    // Atualizar filtro de datas
     yearFilter.innerHTML = '<option value="">Todas as datas</option>' +
         Array.from(years).sort().reverse().map(year => `<option value="${year}">${year}</option>`).join('');
+    
+    // Atualizar filtro de tipos (se existir o elemento)
+    if (typeFilter) {
+        typeFilter.innerHTML = '<option value="">Todos os tipos</option>' +
+            Array.from(types).sort().map(type => `<option value="${type}">${type}</option>`).join('');
+        if (currentType) typeFilter.value = currentType;
+    }
 
     if (currentTag) tagFilter.value = currentTag;
     if (currentYear) yearFilter.value = currentYear;
@@ -458,6 +542,7 @@ function renderSelectionList() {
         if (o.type === 'Album') badgeColor = 'bg-primary';
         if (o.type === 'Single') badgeColor = 'bg-info text-dark';
         if (o.type === 'EP') badgeColor = 'bg-success';
+        if (o.type === 'MusicVideo' || o.type === 'Video' || o.type === 'MUSIC_VIDEO') badgeColor = 'bg-warning text-dark';
         
         return `
         <tr>
@@ -482,8 +567,32 @@ function renderSelectionList() {
 
 function submitSelection() {
     const checked = Array.from(document.querySelectorAll('#selection-list input:checked')).map(c=>c.value);
-    if(checked.length) axios.post('/submit_selection', new URLSearchParams({selection: checked.join(',')}));
+    if(checked.length) {
+        // Desabilitar botão e esconder modal para evitar múltiplos cliques/reenviios
+        const btn = document.getElementById('submit-selection');
+        const selArea = document.getElementById('selection-area');
+        if(btn) btn.disabled = true;
+        if(selArea) selArea.classList.add('d-none');
+        
+        // Enviar TODAS as seleções de uma vez, separadas por VÍRGULA
+        // Formato esperado pelo CLI: "1,2,3,4" ou "1,3,5" para múltiplas seleções
+        const selectionString = checked.join(',');
+        
+        axios.post('/submit_selection', new URLSearchParams({selection: selectionString}))
+            .catch(err => console.error('Selection error:', err))
+            .finally(() => {
+                if(btn) btn.disabled = false;
+            });
+    }
 }
+
 function skipSelection() {
-    axios.post('/skip_selection');
+    const btn = document.getElementById('skip-selection');
+    if(btn) btn.disabled = true;
+    
+    axios.post('/skip_selection')
+        .catch(err => console.error('Skip error:', err))
+        .finally(() => {
+            if(btn) btn.disabled = false;
+        });
 }

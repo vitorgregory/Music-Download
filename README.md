@@ -40,6 +40,26 @@ Baixe músicas do Apple Music em múltiplos formatos (ALAC, AAC, Atmos) via inte
 - **Cancelar**: Clique no ✕ em qualquer item
 - **Retry Automático**: Falhas são retentadas automaticamente (3 vezes)
 
+### 4. Reconexão Automática Offline (Novo!)
+Quando a internet cai, o app tenta reconectar automaticamente sem precisar que você clique novamente:
+
+- **Cache de Credenciais**: Email e senha são salvos criptografados automaticamente
+- **Cache de 2FA**: O código 2FA fornecido é armazenado para reconexão automática
+- **Detecção Automática**: O app detecta queda de internet e tenta reconectar em 3 tentativas
+- **Transparente**: Sem cliques necessários - se estava logado, reconecta automaticamente com 2FA
+
+**Como funciona:**
+1. Você faz login normalmente → credenciais são salvas
+2. Se 2FA é solicitado, você digita o código → código é salvo em cache
+3. Se a internet cair, o app detecta e tenta reconectar
+4. Se tiver 2FA em cache, usa automaticamente sem pedir novamente
+5. A fila continua funcionando quando reconectar
+
+**Observações:**
+- Cache de 2FA expira se não for usado (considere atualizar periodicamente)
+- Dados são criptografados antes de serem salvos no disco
+- Você pode limpar o cache deletando credenciais via interface
+
 ## ⚙️ Configuração
 
 Edite `docker-compose.yml` para ajustar:

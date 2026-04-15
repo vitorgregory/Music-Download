@@ -98,6 +98,7 @@ class WrapperManager(ProcessManager):
         super().__init__()
         self.last_output_at = None
         self.needs_2fa = False
+        self.cached_2fa_attempt = False
 
     def start(self, email, password):
         if self.running: return False
@@ -154,6 +155,10 @@ class WrapperManager(ProcessManager):
                 if "response type 6" in clean.lower() or "success" in clean.lower():
                     with self._lock:
                         self.needs_2fa = False
+                    self.cached_2fa_attempt = False
+                # Detecta falhas de conexão (network, timeout, etc)
+                if any(err in clean.lower() for err in ["network", "timeout", "connection refused", "connection reset", "offline", "unreachable"]):
+                    self._log(">>> Queda de internet detectada - Tentando reconectar offline <<<")
         finally:
             with self._lock:
                 self.running = False
@@ -362,7 +367,7 @@ class DownloaderManager(ProcessManager):
                             socketio.emit('selection_required', {
                                 'options': options,
                                 'options_count': len(options)
-                            }, broadcast=True)
+                            }, skip_sid=True)
                         except Exception as e:
                             self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")
                     else:
@@ -381,7 +386,7 @@ class DownloaderManager(ProcessManager):
                             socketio.emit('selection_required', {
                                 'options': retry_options,
                                 'options_count': len(retry_options)
-                            }, broadcast=True)
+                            }, skip_sid=True)
                         except Exception as e:
                             self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")
 
@@ -397,7 +402,7 @@ class DownloaderManager(ProcessManager):
                             socketio.emit('selection_required', {
                                 'options': retry_options,
                                 'options_count': len(retry_options)
-                            }, broadcast=True)
+                            }, skip_sid=True)
                         except Exception as e:
                             self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")
 

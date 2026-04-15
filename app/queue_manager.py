@@ -247,6 +247,14 @@ def queue_worker():
             elif task['format'] == "aac":
                 args = ["--aac"]
             
+            # Adiciona flags de metadados se configuradas
+            from .utils import get_config
+            config = get_config()
+            if config.get("download-cover"):
+                args.append("--cover")
+            if config.get("download-lyrics"):
+                args.append("--lyrics")
+            
             if not downloader.start(link, args):
                 print(f"[QUEUE] Task #{current_id}: Failed to start downloader")
                 _handle_failure(current_id, "Falha ao iniciar")

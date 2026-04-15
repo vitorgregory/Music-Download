@@ -128,6 +128,42 @@
             </div>
 
             <div class="settings-group">
+                <h5 class="settings-header"><i class="fas fa-image me-2 text-secondary"></i>Capas de Álbum</h5>
+                <div class="d-flex gap-4 flex-wrap">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="embed-cover">
+                        <label class="form-check-label" for="embed-cover">Incorporar capa na música</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="save-artist-cover">
+                        <label class="form-check-label" for="save-artist-cover">Salvar capa do artista</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="save-animated-artwork">
+                        <label class="form-check-label" for="save-animated-artwork">Salvar artwork animado</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="emby-animated-artwork">
+                        <label class="form-check-label" for="emby-animated-artwork">Emby animated artwork</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-group">
+                <h5 class="settings-header"><i class="fas fa-music me-2 text-info"></i>Letras</h5>
+                <div class="d-flex gap-4 flex-wrap">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="embed-lrc">
+                        <label class="form-check-label" for="embed-lrc">Incorporar letras na música</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="save-lrc-file">
+                        <label class="form-check-label" for="save-lrc-file">Salvar arquivo de letras</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-group">
                 <h5 class="settings-header"><i class="fas fa-sync-alt me-2 text-primary"></i>Conversão (FFmpeg)</h5>
                 <div class="row g-3 mb-3">
                     <div class="col-md-4">
@@ -188,6 +224,13 @@
             "master-tag": "master-tag",
             "use-song-info-for-playlist": "use-song-info-for-playlist", // bool
             "download-album-cover-for-playlist": "download-album-cover-for-playlist", // bool
+            
+            "embed-cover": "embed-cover", // bool
+            "save-artist-cover": "save-artist-cover", // bool
+            "save-animated-artwork": "save-animated-artwork", // bool
+            "emby-animated-artwork": "emby-animated-artwork", // bool
+            "embed-lrc": "embed-lrc", // bool
+            "save-lrc-file": "save-lrc-file", // bool
             
             "convert-after-download": "convert-after-download", // bool
             "convert-format": "convert-format",
