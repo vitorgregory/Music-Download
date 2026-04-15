@@ -134,6 +134,57 @@
                 </div>
             </div>
 
+            <!-- CAPAS DE ÁLBUM -->
+            <div class="card bg-dark border-secondary mb-4">
+                <div class="card-body">
+                    <h5 class="settings-header"><i class="fas fa-image me-2 text-success"></i>Capas de Álbum</h5>
+                    <div class="d-flex flex-wrap gap-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="embed-cover">
+                            <label class="form-check-label" for="embed-cover">Incorporar capa na música</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="save-artist-artwork">
+                            <label class="form-check-label" for="save-artist-artwork">Salvar capa do artista</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ARTWORK ANIMADO -->
+            <div class="card bg-dark border-secondary mb-4">
+                <div class="card-body">
+                    <h5 class="settings-header"><i class="fas fa-film me-2 text-warning"></i>Artwork Animado</h5>
+                    <div class="d-flex flex-wrap gap-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="save-animated-artwork">
+                            <label class="form-check-label" for="save-animated-artwork">Salvar artwork animado</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="emby-animated-artwork">
+                            <label class="form-check-label" for="emby-animated-artwork">Emby animated artwork</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LETRAS -->
+            <div class="card bg-dark border-secondary mb-4">
+                <div class="card-body">
+                    <h5 class="settings-header"><i class="fas fa-music me-2 text-info"></i>Letras</h5>
+                    <div class="d-flex flex-wrap gap-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="embed-lyrics">
+                            <label class="form-check-label" for="embed-lyrics">Incorporar letras na música</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="save-lrc">
+                            <label class="form-check-label" for="save-lrc">Salvar arquivo de letras (.lrc)</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card bg-dark border-secondary mb-4">
                 <div class="card-body">
                     <h5 class="settings-header"><i class="fas fa-sync-alt me-2 text-primary"></i>Conversão (FFmpeg)</h5>
@@ -177,7 +228,6 @@
     </div>
 
     <script>
-        // Mapeamento dos IDs do HTML para as chaves do config.yaml
         const CONFIG_MAP = {
             "media-user-token": "media-user-token",
             "authorization-token": "authorization-token",
@@ -196,12 +246,24 @@
             "explicit-tag": "explicit-tag",
             "clean-tag": "clean-tag",
             "master-tag": "master-tag",
-            "use-song-info-for-playlist": "use-song-info-for-playlist", // bool
-            "download-album-cover-for-playlist": "download-album-cover-for-playlist", // bool
+            "use-song-info-for-playlist": "use-song-info-for-playlist",
+            "download-album-cover-for-playlist": "download-album-cover-for-playlist",
+
+            // Capas de Álbum
+            "embed-cover": "embed-cover",
+            "save-artist-artwork": "save-artist-artwork",
+
+            // Artwork Animado
+            "save-animated-artwork": "save-animated-artwork",
+            "emby-animated-artwork": "emby-animated-artwork",
+
+            // Letras
+            "embed-lyrics": "embed-lyrics",
+            "save-lrc": "save-lrc",
             
-            "convert-after-download": "convert-after-download", // bool
+            "convert-after-download": "convert-after-download",
             "convert-format": "convert-format",
-            "keep-original": "keep-original", // bool
+            "keep-original": "keep-original",
             "ffmpeg-path": "ffmpeg-path",
             "ffmpeg-args": "ffmpeg-args"
         };
@@ -211,7 +273,6 @@
                 const res = await axios.get("/get_config");
                 const c = res.data.config;
                 
-                // Preenche os campos
                 for (const [htmlId, configKey] of Object.entries(CONFIG_MAP)) {
                     const el = document.getElementById(htmlId);
                     if (el && c[configKey] !== undefined) {
@@ -231,7 +292,6 @@
         async function saveSettings() {
             const data = {};
             
-            // Coleta dados
             for (const [htmlId, configKey] of Object.entries(CONFIG_MAP)) {
                 const el = document.getElementById(htmlId);
                 if (el) {
