@@ -325,7 +325,7 @@ def queue_worker():
                 continue
             
             # Check for "already exists" case
-            log_text = "\n".join(downloader.logs[-50:]).lower()
+            log_text = "\n".join(list(downloader.logs)[-50:]).lower()
             if "already exists" in log_text or "track already exists" in log_text:
                 path = locate_existing_file(current_id)
                 if path:
