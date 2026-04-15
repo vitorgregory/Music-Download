@@ -28,6 +28,15 @@ BOOL_CONFIG_KEYS = {
     "download-album-cover-for-playlist",
     "convert-after-download",
     "keep-original",
+    # Capas de Álbum
+    "embed-cover",
+    "save-artist-artwork",
+    # Artwork Animado
+    "save-animated-artwork",
+    "emby-animated-artwork",
+    # Letras
+    "embed-lyrics",
+    "save-lrc",
 }
 
 REQUIRED_CONFIG_KEYS = set(STRING_CONFIG_KEYS)
@@ -43,7 +52,17 @@ def get_config_path():
 def get_config():
     try:
         with open(get_config_path(), 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
+            cfg = yaml.safe_load(f) or {}
+        # Defaults para novas chaves booleanas
+        cfg.setdefault("use-song-info-for-playlist", True)
+        cfg.setdefault("download-album-cover-for-playlist", True)
+        cfg.setdefault("embed-cover", True)
+        cfg.setdefault("save-artist-artwork", False)
+        cfg.setdefault("save-animated-artwork", False)
+        cfg.setdefault("emby-animated-artwork", False)
+        cfg.setdefault("embed-lyrics", False)
+        cfg.setdefault("save-lrc", False)
+        return cfg
     except: return {}
 
 def save_config(new_config):
