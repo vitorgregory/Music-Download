@@ -1,1 +1,23 @@
-/* placeholder */
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+--paper: #f6f2ec;
+--paper-strong: #efe7dd;
+--card: #ffffff;
+--ink: #2c2925;
+--ink-soft: #6b645d;
+--sage: #a1b09a;
+--sage-deep: #7c8c75;
+--accent: #2c2925;
+--accent-soft: rgba(161, 176, 154, 0.24);
+--border: #e2d9cf;
+--shadow-soft: 0 18px 50px rgba(38, 30, 24, 0.12);
+--shadow-float: 0 12px 28px rgba(38, 30, 24, 0.14);
+--radius-sm: 12px;
+--radius-md: 18px;
+--radius-lg: 26px;
+--radius-xl: 34px;
+--font-display: "Fraunces", "Times New Roman", serif;
+--font-ui: "Manrope", "Segoe UI", system-ui, sans-serif;
+--font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
