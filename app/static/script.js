@@ -111,6 +111,7 @@ function setupEventListeners() {
         ['nav-login-btn', () => { // <--- NOVO
             document.getElementById('login-form').classList.remove('d-none');
             toggleLogs(); // Abre a gaveta para ver o form
+            document.getElementById('email')?.focus();
         }]
     ];
 
@@ -129,6 +130,71 @@ function setupEventListeners() {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', renderSelectionList);
     });
+
+    // UX: atalhos de teclado (não alteram a lógica de rede)
+    const linkBox = document.getElementById('link-box');
+    if (linkBox) {
+        linkBox.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') { ev.preventDefault(); analyzeLink(); }
+        });
+    }
+
+    const twofaInput = document.getElementById('twofa-code');
+    if (twofaInput) {
+        twofaInput.addEventListener('input', () => {
+            twofaInput.value = twofaInput.value.replace(/\D/g, '').slice(0, 6);
+        });
+        twofaInput.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') { ev.preventDefault(); submit2FA(); }
+        });
+    }
+
+    const passwordInput = document.getElementById('password');
+    if (passwordInput) {
+        passwordInput.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') { ev.preventDefault(); submitLogin(); }
+        });
+    }
+
+    const searchBox = document.getElementById('selection-search');
+    if (searchBox) {
+        searchBox.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') { ev.preventDefault(); submitSelection(); }
+        });
+    }
+}
+
+// --- FEEDBACK VISUAL (toasts) ---
+function showToast(message, type = 'info', timeout = 4000) {
+    const stack = document.getElementById('toast-stack');
+    if (!stack) { console.log('[toast]', type, message); return; }
+
+    const icons = {
+        success: 'fa-circle-check',
+        error: 'fa-circle-exclamation',
+        info: 'fa-circle-info',
+        warning: 'fa-triangle-exclamation'
+    };
+
+    const el = document.createElement('div');
+    el.className = `app-toast app-toast-${type}`;
+    el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    el.innerHTML = `
+        <i class="fas ${icons[type] || icons.info}" aria-hidden="true"></i>
+        <span class="app-toast-msg"></span>
+        <button type="button" class="app-toast-close" aria-label="Fechar aviso">&times;</button>
+    `;
+    el.querySelector('.app-toast-msg').textContent = message;
+
+    const dismiss = () => {
+        el.classList.add('is-leaving');
+        setTimeout(() => el.remove(), 220);
+    };
+    el.querySelector('.app-toast-close').addEventListener('click', dismiss);
+
+    stack.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('is-visible'));
+    setTimeout(dismiss, timeout);
 }
 
 // --- CORE LOGIC ---
@@ -191,14 +257,23 @@ function getOrCreateWarnContainer() {
     return c;
 }
 
+let lastTwofaVisible = false;
+
 function updateWrapperUI(w) {
-    // Status Dot
+    // Status Dot + rótulo textual
     const dot = document.getElementById('wrapper-status-dot');
     if (dot) {
-        dot.style.backgroundColor = w.running ? '#28a745' : '#dc3545';
-        dot.style.boxShadow = w.running ? '0 0 8px #28a745' : 'none';
-        dot.title = w.running ? "Conectado" : "Desconectado";
+        dot.classList.toggle('is-online', !!w.running);
+        dot.classList.toggle('is-offline', !w.running);
     }
+    const chip = document.getElementById('wrapper-status-chip');
+    if (chip) {
+        chip.classList.toggle('is-online', !!w.running);
+        chip.classList.toggle('is-offline', !w.running);
+        chip.title = w.running ? 'Wrapper conectado' : 'Wrapper desconectado';
+    }
+    const statusText = document.getElementById('wrapper-status-text');
+    if (statusText) statusText.textContent = w.running ? 'Conectado' : 'Desconectado';
 
     // NOVO: Botão da Navbar
     const navBtn = document.getElementById('nav-login-btn');
@@ -223,6 +298,12 @@ function updateWrapperUI(w) {
     document.getElementById('login-btn')?.classList.toggle('d-none', w.running);
     document.getElementById('stop-wrapper-btn')?.classList.toggle('d-none', !w.running);
     document.getElementById('twofa-modal')?.classList.toggle('d-none', !w.needs_2fa);
+
+    // Foco automático no campo 2FA quando o modal abre
+    if (w.needs_2fa && !lastTwofaVisible) {
+        setTimeout(() => document.getElementById('twofa-code')?.focus(), 120);
+    }
+    lastTwofaVisible = !!w.needs_2fa;
 }
 
 function updateDownloaderUI(d) {
@@ -250,9 +331,13 @@ function updateQueueUI(q) {
     // Pause Button State
     const pBtn = document.getElementById('pause-btn');
     if (pBtn) {
-        pBtn.innerHTML = q.paused ? '<i class="fas fa-play"></i> Retomar' : '<i class="fas fa-pause"></i> Pausar';
+        pBtn.innerHTML = q.paused
+            ? '<i class="fas fa-play me-1"></i> Retomar'
+            : '<i class="fas fa-pause me-1"></i> Pausar';
         pBtn.className = q.paused ? 'btn btn-success btn-sm rounded-pill px-3' : 'btn btn-outline-warning btn-sm rounded-pill px-3';
+        pBtn.title = q.paused ? 'Retomar a fila de downloads' : 'Pausar a fila de downloads';
     }
+    document.body.classList.toggle('queue-paused', !!q.paused);
 
     // Atualiza badges
     let activeItems = q.items.filter(i => ['pending', 'processing'].includes(i.status));
@@ -267,9 +352,27 @@ function updateQueueUI(q) {
     renderQueueTable(tableHistory, historyItems, false);
 }
 
+function queueEmptyState(isActiveTab) {
+    return isActiveTab
+        ? `<tr><td colspan="6" class="p-0">
+             <div class="empty-state">
+               <i class="fas fa-compact-disc" aria-hidden="true"></i>
+               <p class="fw-semibold mb-1">Nenhum download ativo</p>
+               <p class="text-muted small mb-0">Cole um link do Apple Music acima para começar.</p>
+             </div>
+           </td></tr>`
+        : `<tr><td colspan="6" class="p-0">
+             <div class="empty-state">
+               <i class="fas fa-clock-rotate-left" aria-hidden="true"></i>
+               <p class="fw-semibold mb-1">Histórico vazio</p>
+               <p class="text-muted small mb-0">Downloads concluídos ou cancelados aparecem aqui.</p>
+             </div>
+           </td></tr>`;
+}
+
 function renderQueueTable(container, items, isActiveTab) {
     if (!items.length) {
-        container.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">Nenhum item</td></tr>`;
+        container.innerHTML = queueEmptyState(isActiveTab);
         return;
     }
 
@@ -283,19 +386,19 @@ function renderQueueTable(container, items, isActiveTab) {
         let statusClass = "";
         
         if (item.status === 'processing') { 
-            statusBadge = '<span class="badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> Processando</span>';
+            statusBadge = '<span class="badge status-badge bg-warning text-dark"><i class="fas fa-spinner fa-spin"></i> Processando</span>';
             statusClass = "status-processing";
         } else if (item.status === 'completed') { 
-            statusBadge = '<span class="badge bg-success"><i class="fas fa-check"></i> Concluído</span>';
+            statusBadge = '<span class="badge status-badge bg-success"><i class="fas fa-check"></i> Concluído</span>';
             statusClass = "status-completed";
         } else if (item.status === 'failed') { 
-            statusBadge = '<span class="badge bg-danger"><i class="fas fa-times"></i> Falha</span>';
+            statusBadge = '<span class="badge status-badge bg-danger"><i class="fas fa-times"></i> Falha</span>';
             statusClass = "status-failed";
         } else if (item.status === 'cancelled') { 
-            statusBadge = '<span class="badge bg-danger"><i class="fas fa-ban"></i> Cancelado</span>';
+            statusBadge = '<span class="badge status-badge bg-danger"><i class="fas fa-ban"></i> Cancelado</span>';
             statusClass = "status-failed";
         } else if (item.status === 'pending') { 
-            statusBadge = '<span class="badge bg-secondary"><i class="fas fa-clock"></i> Na fila</span>';
+            statusBadge = '<span class="badge status-badge bg-secondary"><i class="fas fa-clock"></i> Na fila</span>';
             statusClass = "status-pending";
         }
 
@@ -305,38 +408,38 @@ function renderQueueTable(container, items, isActiveTab) {
         // Action buttons
         let actionHtml = "";
         if (item.status === 'processing') {
-            actionHtml = `<button onclick="stopTask(${item.id})" class="btn btn-sm btn-danger" title="Parar"><i class="fas fa-stop-circle"></i></button>`;
+            actionHtml = `<button type="button" onclick="stopTask(${item.id})" class="btn btn-sm btn-danger" title="Parar download" aria-label="Parar download ${item.id}"><i class="fas fa-stop-circle"></i></button>`;
         } else if (item.status === 'pending') {
             actionHtml = `
-                <div class="btn-group btn-group-sm" role="group">
-                    <button onclick="moveTask(${item.id}, 'up')" class="btn btn-outline-secondary" title="Acima"><i class="fas fa-arrow-up"></i></button>
-                    <button onclick="moveTask(${item.id}, 'down')" class="btn btn-outline-secondary" title="Abaixo"><i class="fas fa-arrow-down"></i></button>
-                    <button onclick="cancelTask(${item.id}, 'pending')" class="btn btn-outline-danger" title="Cancelar"><i class="fas fa-ban"></i></button>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Ações do item ${item.id}">
+                    <button type="button" onclick="moveTask(${item.id}, 'up')" class="btn btn-outline-secondary" title="Mover para cima" aria-label="Mover item ${item.id} para cima"><i class="fas fa-arrow-up"></i></button>
+                    <button type="button" onclick="moveTask(${item.id}, 'down')" class="btn btn-outline-secondary" title="Mover para baixo" aria-label="Mover item ${item.id} para baixo"><i class="fas fa-arrow-down"></i></button>
+                    <button type="button" onclick="cancelTask(${item.id}, 'pending')" class="btn btn-outline-danger" title="Cancelar item" aria-label="Cancelar item ${item.id}"><i class="fas fa-ban"></i></button>
                 </div>
             `;
         } else {
-            actionHtml = `<button onclick="deleteHistory(${item.id})" class="btn btn-sm btn-outline-secondary" title="Remover"><i class="fas fa-trash"></i></button>`;
+            actionHtml = `<button type="button" onclick="deleteHistory(${item.id})" class="btn btn-sm btn-outline-secondary" title="Remover do histórico" aria-label="Remover item ${item.id} do histórico"><i class="fas fa-trash"></i></button>`;
         }
 
         const formatBadge = `<span class="badge badge-soft">${item.format.toUpperCase()}</span>`;
         
         return `
             <tr class="queue-row ${statusClass}">
-                <td><small>#${item.id}</small></td>
-                <td>
-                    <div class="text-truncate" title="${title}"><strong>${title}</strong></div>
-                    <small class="text-muted text-truncate d-block" title="${item.link}">${item.link}</small>
+                <td data-label="ID"><small class="text-muted">#${item.id}</small></td>
+                <td data-label="Título">
+                    <div class="queue-title" title="${title}"><strong>${title}</strong></div>
+                    <small class="text-muted d-block queue-link" title="${item.link}">${item.link}</small>
                     ${item.existing_path ? `<small class="text-success d-block"><i class="fas fa-check-circle"></i> ${truncatePath(item.existing_path, 40)}</small>` : ''}
                 </td>
-                <td>${statusBadge}</td>
-                <td>
+                <td data-label="Status">${statusBadge}</td>
+                <td data-label="Progresso">
                     ${item.status === 'processing' 
-                        ? `<div class="progress" style="height: 20px;"><div class="progress-bar" style="width: ${progressPercent}%">${progressDisplay}</div></div>`
+                        ? `<div class="progress" style="height: 20px;" role="progressbar" aria-valuenow="${progressPercent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar" style="width: ${progressPercent}%">${progressDisplay}</div></div>`
                         : `<small>${progressDisplay}</small>`
                     }
                 </td>
-                <td>${formatBadge}</td>
-                <td>${actionHtml}</td>
+                <td data-label="Formato">${formatBadge}</td>
+                <td data-label="Ações" class="text-lg-end">${actionHtml}</td>
             </tr>
         `;
     }).join('');
@@ -349,37 +452,58 @@ function deleteHistory(id) {
     if(confirm("Remover item do histórico?")) {
         // Mark as deleted by moving to a special status or just hide
         // For now, we can call cancel to keep consistency
-        axios.post('/api/cancel_task', {id, status: 'history'}).catch(() => {});
+        axios.post('/api/cancel_task', {id, status: 'history'})
+            .then(() => showToast('Item removido do histórico.', 'success'))
+            .catch(() => showToast('Não foi possível remover o item.', 'error'));
     }
 }
 
 // --- ACTIONS ---
 
 async function analyzeLink() {
-    const link = document.getElementById('link-box').value;
-    if (!link) return;
-    
+    const link = document.getElementById('link-box').value.trim();
+    const box = document.getElementById('link-box');
+    if (!link) {
+        box?.classList.add('is-invalid-soft');
+        setTimeout(() => box?.classList.remove('is-invalid-soft'), 1200);
+        showToast('Cole um link do Apple Music para analisar.', 'warning');
+        box?.focus();
+        return;
+    }
+
     const btn = document.getElementById('analyze-btn');
     const originalHTML = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+
+    const skeleton = document.getElementById('preview-skeleton');
+    document.getElementById('preview-area')?.classList.add('d-none');
+    skeleton?.classList.remove('d-none');
 
     try {
         const res = await axios.post('/analyze_link', new URLSearchParams({link}));
         if (res.data.status === 'ok') {
             const m = res.data.metadata;
-            document.getElementById('preview-area').classList.remove('d-none');
+            const area = document.getElementById('preview-area');
+            area.classList.remove('d-none');
+            area.classList.add('is-entering');
+            setTimeout(() => area.classList.remove('is-entering'), 400);
             document.getElementById('preview-title').innerText = m.title;
             document.getElementById('preview-type').innerText = m.type;
             const img = document.getElementById('preview-img');
-            if (m.image) { img.src = m.image; img.classList.remove('d-none'); }
+            if (m.image) { img.src = m.image; img.alt = `Capa de ${m.title}`; img.classList.remove('d-none'); }
+            else { img.classList.add('d-none'); }
+            document.getElementById('download-btn')?.focus();
         } else {
-            alert('Link inválido');
+            showToast('Link inválido. Verifique a URL do Apple Music.', 'error');
         }
-    } catch { alert('Erro na análise'); } 
+    } catch { showToast('Erro ao analisar o link. Tente novamente.', 'error'); }
     finally {
+        skeleton?.classList.add('d-none');
         btn.innerHTML = originalHTML;
         btn.disabled = false;
+        btn.removeAttribute('aria-busy');
     }
 }
 
@@ -393,23 +517,27 @@ async function addToQueue() {
     if (quality === 'atmos') { fmt = 'atmos'; special = true; }
 
     const btn = document.getElementById('download-btn');
+    const originalHTML = btn.innerHTML;
     btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Adicionando…</span>';
     
     try {
         await axios.post('/download', new URLSearchParams({
             link, title, format: fmt, special_audio: special
         }));
-        btn.innerText = "Adicionado!";
+        btn.innerHTML = '<i class="fas fa-check"></i> <span>Adicionado!</span>';
         btn.classList.add('btn-success');
         document.getElementById('preview-area').classList.add('d-none');
         document.getElementById('link-box').value = '';
+        showToast(`"${title}" adicionado à fila em ${fmt.toUpperCase()}.`, 'success');
         setTimeout(() => {
-            btn.innerText = "Baixar";
+            btn.innerHTML = originalHTML;
             btn.classList.remove('btn-success');
             btn.disabled = false;
         }, 1500);
     } catch {
-        alert("Erro ao adicionar");
+        showToast('Erro ao adicionar o item à fila.', 'error');
+        btn.innerHTML = originalHTML;
         btn.disabled = false;
     }
 }
@@ -422,11 +550,19 @@ function togglePause() {
 }
 
 function stopTask(id) {
-    if(confirm("Parar download?")) axios.post('/api/cancel_task', {id, status: 'processing'});
+    if(confirm("Parar download?")) {
+        axios.post('/api/cancel_task', {id, status: 'processing'})
+            .then(() => showToast('Download interrompido.', 'info'))
+            .catch(() => showToast('Não foi possível parar o download.', 'error'));
+    }
 }
 
 function cancelTask(id, status) {
-    if(confirm("Cancelar item da fila?")) axios.post('/api/cancel_task', {id, status});
+    if(confirm("Cancelar item da fila?")) {
+        axios.post('/api/cancel_task', {id, status})
+            .then(() => showToast('Item cancelado.', 'info'))
+            .catch(() => showToast('Não foi possível cancelar o item.', 'error'));
+    }
 }
 
 function moveTask(id, direction) {
@@ -437,12 +573,49 @@ function stopWrapper() { axios.post('/stop_wrapper'); }
 function submitLogin() {
     const e = document.getElementById('email').value;
     const p = document.getElementById('password').value;
+    if (!e || !p) { showToast('Informe email e senha para conectar.', 'warning'); return; }
     axios.post('/login_wrapper', new URLSearchParams({email:e, password:p}));
     document.getElementById('login-form').classList.add('d-none');
+    showToast('Conectando ao wrapper…', 'info');
 }
 function submit2FA() {
-    axios.post('/submit_2fa', new URLSearchParams({twofa_code: document.getElementById('twofa-code').value}));
+    const input = document.getElementById('twofa-code');
+    const code = input.value.trim();
+    if (code.length < 6) {
+        input.classList.add('is-invalid-soft');
+        setTimeout(() => input.classList.remove('is-invalid-soft'), 1200);
+        showToast('Digite os 6 dígitos do código.', 'warning');
+        return;
+    }
+    axios.post('/submit_2fa', new URLSearchParams({twofa_code: code}));
     document.getElementById('twofa-modal').classList.add('d-none');
+    input.value = '';
+    showToast('Código enviado.', 'success');
+}
+
+// Marca/desmarca todos os itens visíveis do modal de seleção (apenas UI)
+function toggleAllSelection() {
+    const boxes = Array.from(document.querySelectorAll('#selection-list input[type="checkbox"]'));
+    if (!boxes.length) return;
+    const shouldCheck = boxes.some(b => !b.checked);
+    boxes.forEach(b => { b.checked = shouldCheck; });
+    updateSelectionCount();
+    const btn = document.getElementById('selection-toggle-all');
+    if (btn) {
+        btn.innerHTML = shouldCheck
+            ? '<i class="fas fa-xmark me-1"></i>Limpar seleção'
+            : '<i class="fas fa-check-double me-1"></i>Marcar todos';
+    }
+}
+
+function updateSelectionCount() {
+    const checked = document.querySelectorAll('#selection-list input[type="checkbox"]:checked').length;
+    const btn = document.getElementById('submit-selection');
+    if (!btn) return;
+    btn.disabled = checked === 0;
+    btn.innerHTML = checked
+        ? `<i class="fas fa-check me-2"></i>Confirmar seleção (${checked})`
+        : '<i class="fas fa-check me-2"></i>Selecione ao menos um item';
 }
 
 function syncSelectionOptions(opts) {
@@ -527,13 +700,24 @@ function renderSelectionList() {
     });
 
     const summary = document.getElementById('selection-summary');
-    if (summary) summary.textContent = `${filtered.length} itens`;
+    if (summary) {
+        summary.textContent = filtered.length === selectionOptions.length
+            ? `${filtered.length} itens`
+            : `${filtered.length} de ${selectionOptions.length} itens`;
+    }
 
     if (!filtered.length) {
         list.innerHTML = `
             <tr>
-                <td colspan="6" class="text-center text-muted py-4">Nenhum item encontrado.</td>
+                <td colspan="6" class="p-0">
+                    <div class="empty-state empty-state-sm">
+                        <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                        <p class="fw-semibold mb-1">Nenhum item encontrado</p>
+                        <p class="text-muted small mb-0">Ajuste a busca ou limpe os filtros.</p>
+                    </div>
+                </td>
             </tr>`;
+        updateSelectionCount();
         return;
     }
 
@@ -545,24 +729,29 @@ function renderSelectionList() {
         if (o.type === 'MusicVideo' || o.type === 'Video' || o.type === 'MUSIC_VIDEO') badgeColor = 'bg-warning text-dark';
         
         return `
-        <tr>
-            <td>
-                <input class="form-check-input" type="checkbox" value="${o.id}" id="chk-${o.id}">
+        <tr class="selection-row">
+            <td data-label="">
+                <input class="form-check-input" type="checkbox" value="${o.id}" id="chk-${o.id}" aria-label="Selecionar ${o.label}">
             </td>
-            <td>
+            <td data-label="Título">
                 <label class="form-check-label selection-label" for="chk-${o.id}">
                     <div class="fw-bold">${o.label}</div>
                     <div class="text-muted small">${o.extra || '—'}</div>
                 </label>
             </td>
-            <td><span class="badge ${badgeColor}">${o.type}</span></td>
-            <td>
+            <td data-label="Tipo"><span class="badge ${badgeColor}">${o.type}</span></td>
+            <td data-label="Edição">
                 ${(o.tags||[]).map(t=>`<span class="badge tag-pill me-1">${t}</span>`).join('') || '<span class="text-muted small">—</span>'}
             </td>
-            <td class="text-muted small">${o.date || '—'}</td>
-            <td class="text-muted small">${o.duration || '—'}</td>
+            <td data-label="Data" class="text-muted small">${o.date || '—'}</td>
+            <td data-label="Tempo" class="text-muted small">${o.duration || '—'}</td>
         </tr>`;
     }).join('');
+
+    list.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+        cb.addEventListener('change', updateSelectionCount);
+    });
+    updateSelectionCount();
 }
 
 function submitSelection() {
@@ -578,11 +767,18 @@ function submitSelection() {
         // Formato esperado pelo CLI: "1,2,3,4" ou "1,3,5" para múltiplas seleções
         const selectionString = checked.join(',');
         
+        showToast(`${checked.length} item(ns) enviados para download.`, 'success');
+
         axios.post('/submit_selection', new URLSearchParams({selection: selectionString}))
-            .catch(err => console.error('Selection error:', err))
+            .catch(err => {
+                console.error('Selection error:', err);
+                showToast('Erro ao enviar a seleção.', 'error');
+            })
             .finally(() => {
                 if(btn) btn.disabled = false;
             });
+    } else {
+        showToast('Selecione ao menos um item para continuar.', 'warning');
     }
 }
 
@@ -591,7 +787,10 @@ function skipSelection() {
     if(btn) btn.disabled = true;
     
     axios.post('/skip_selection')
-        .catch(err => console.error('Skip error:', err))
+        .catch(err => {
+            console.error('Skip error:', err);
+            showToast('Erro ao pular a seleção.', 'error');
+        })
         .finally(() => {
             if(btn) btn.disabled = false;
         });
