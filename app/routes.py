@@ -9,10 +9,14 @@ import os
 import json
 import time
 import shutil
+import threading
 from flask import current_app
 
 def get_cred_path(): 
     return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", ".credentials")
+
+def get_2fa_cache_path():
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", ".2fa_cache")
 
 def load_creds():
     try:
@@ -34,6 +38,34 @@ def save_creds(e, p):
             json.dump({"email": encrypt_str(e), "password": encrypt_str(p)}, f)
     except: pass
 
+def load_2fa_cache():
+    """Carrega código 2FA em cache (encrypted)"""
+    try:
+        if os.path.exists(get_2fa_cache_path()):
+            with open(get_2fa_cache_path(), 'r') as f:
+                c = json.load(f)
+            try:
+                return decrypt_str(c.get("code"))
+            except Exception:
+                return None
+    except: pass
+    return None
+
+def save_2fa_cache(code):
+    """Salva código 2FA em cache (encrypted)"""
+    try:
+        os.makedirs(os.path.dirname(get_2fa_cache_path()), exist_ok=True)
+        with open(get_2fa_cache_path(), 'w') as f:
+            json.dump({"code": encrypt_str(code)}, f)
+    except: pass
+
+def clear_2fa_cache():
+    """Remove cache 2FA"""
+    try:
+        if os.path.exists(get_2fa_cache_path()):
+            os.remove(get_2fa_cache_path())
+    except: pass
+
 # --- Rotas Principais ---
 
 @app.route("/")
@@ -42,6 +74,15 @@ def index():
     creds = load_creds()
     if creds[0] and not wrapper.running:
         wrapper.start(creds[0], creds[1])
+        # Se temos 2FA em cache, tenta usar automaticamente após delay
+        cached_2fa = load_2fa_cache()
+        if cached_2fa:
+            def attempt_2fa():
+                time.sleep(2)  # Aguarda o prompt de 2FA aparecer
+                if wrapper.needs_2fa:
+                    wrapper.write_input(cached_2fa)
+                    wrapper.cached_2fa_attempt = True
+            threading.Thread(target=attempt_2fa, daemon=True).start()
     return render_template("index.html")
 
 @app.route("/settings")
@@ -149,11 +190,13 @@ def api_add_to_queue():
 # --- Controles ---
 
 @app.route("/api/pause_queue", methods=["POST"])
+@limiter.exempt
 def pause_queue():
     paused = bool(request.json.get("paused"))
     return jsonify({"paused": set_pause(paused)})
 
 @app.route("/api/cancel_task", methods=["POST"])
+@limiter.exempt
 def cancel_task():
     task_id = request.json.get("id")
     status = request.json.get("status")
@@ -164,6 +207,7 @@ def cancel_task():
     return jsonify({"status": "ok"})
 
 @app.route("/api/move_queue", methods=["POST"])
+@limiter.exempt
 def move_queue():
     task_id = request.json.get("id")
     direction = request.json.get("direction")
@@ -182,6 +226,7 @@ def analyze():
 
 
 @app.route("/login_wrapper", methods=["POST"])
+@limiter.exempt
 def login_wrapper():
     email = (request.form.get("email") or "").strip()
     password = (request.form.get("password") or "").strip()
@@ -214,27 +259,77 @@ def login_wrapper():
     return jsonify({"status": "error"})
 
 @app.route("/stop_wrapper", methods=["POST"])
+@limiter.exempt
 def stop_wrapper():
     wrapper.stop()
     return jsonify({"status": "ok"})
 
+@app.route("/reconnect_offline", methods=["POST"])
+@limiter.exempt
+def reconnect_offline():
+    """Tenta reconectar com credenciais em cache quando internet cai"""
+    creds = load_creds()
+    cached_2fa = load_2fa_cache()
+    
+    if not creds[0] or not creds[1]:
+        return jsonify({"status": "error", "message": "Sem credenciais em cache."}), 400
+    
+    # Para o processo atual
+    wrapper.stop()
+    time.sleep(0.5)
+    
+    # Limpa apenas o cache de cookies/session, não as credenciais
+    wrapper_dir = os.path.dirname(os.path.join(os.path.dirname(os.path.abspath(__file__)), "wrapper", "wrapper"))
+    try:
+        for item in os.listdir(wrapper_dir):
+            if item.endswith(".json") or item == "cache":
+                path = os.path.join(wrapper_dir, item)
+                if os.path.isfile(path):
+                    os.remove(path)
+                elif os.path.isdir(path):
+                    shutil.rmtree(path)
+    except Exception:
+        pass
+    
+    # Inicia com credenciais em cache
+    if wrapper.start(creds[0], creds[1]):
+        # Se temos 2FA em cache, envia automaticamente
+        if cached_2fa:
+            time.sleep(1)  # Aguarda o prompt de 2FA
+            wrapper.write_input(cached_2fa)
+            wrapper.cached_2fa_attempt = True
+        return jsonify({"status": "ok", "used_2fa_cache": bool(cached_2fa)})
+    return jsonify({"status": "error"})
+
 @app.route("/submit_2fa", methods=["POST"])
+@limiter.exempt
 def submit_2fa():
     code = (request.form.get("twofa_code") or "").strip()
     if not code:
         return jsonify({"status": "error", "message": "Código 2FA inválido."}), 400
+    # Salva o código em cache para uso offline
+    save_2fa_cache(code)
     wrapper.write_input(code)
     return jsonify({"status": "ok"})
 
 @app.route("/submit_selection", methods=["POST"])
+@limiter.exempt
 def submit_selection():
     sel = (request.form.get("selection") or "").strip()
-    if not sel or not sel.isdigit():
+    if not sel:
         return jsonify({"status": "error", "message": "Seleção inválida."}), 400
+    
+    # Suportar múltiplas seleções separadas por espaço, vírgula ou hífen (ex: "1 2 3" ou "1,2,3" ou "1-3")
+    # Validar que contém apenas números, espaços, vírgulas e hífens
+    if not all(c.isdigit() or c in ' ,-' for c in sel):
+        return jsonify({"status": "error", "message": "Seleção inválida - use números separados por espaço, vírgula ou hífen."}), 400
+    
+    # Enviar como está para o downloader (ele entende espaços, vírgulas, ranges, etc)
     downloader.write_input(sel)
     return jsonify({"status": "ok"})
 
 @app.route("/skip_selection", methods=["POST"])
+@limiter.exempt
 def skip_selection():
     downloader.close_stdin()
     return jsonify({"status": "ok"})

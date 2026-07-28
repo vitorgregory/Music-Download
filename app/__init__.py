@@ -1,14 +1,33 @@
-from flask import Flask
+from flask import Flask, url_for
 import os
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_socketio import SocketIO
 
-app = Flask(__name__)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+app = Flask(
+	__name__,
+	template_folder=os.path.join(BASE_DIR, 'app', 'templates'),
+	static_folder=os.path.join(BASE_DIR, 'app', 'static'),
+	static_url_path='/static',
+)
+
+@app.context_processor
+def inject_static_asset():
+	def static_asset(filename):
+		path = os.path.join(app.static_folder, filename)
+		try:
+			version = int(os.path.getmtime(path))
+		except OSError:
+			version = 0
+		return url_for('static', filename=filename, v=version)
+	return {'static_asset': static_asset}
 
 # Basic secret key for CSRF and session signing. Override in production.
 # Determine persistent secret key path
-secret_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'secret.key')
+secret_path = os.path.join(BASE_DIR, 'data', 'secret.key')
 env_secret = os.environ.get('SECRET_KEY')
 if env_secret:
 	app.config['SECRET_KEY'] = env_secret
@@ -44,6 +63,9 @@ except Exception as e:
 	warnings.warn(f"Failed to initialize rate limiter storage ({e}); falling back to in-memory storage.")
 	limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"]) 
 	limiter.init_app(app)
+
+# Socket.IO for real-time events
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Expose `csrf_token()` in templates
 app.jinja_env.globals['csrf_token'] = generate_csrf

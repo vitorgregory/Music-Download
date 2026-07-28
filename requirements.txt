@@ -4,5 +4,7 @@ requests
 cryptography
 Flask-Limiter
 Flask-WTF
+Flask-SocketIO
+python-socketio
 pytest
 redis>=4.0

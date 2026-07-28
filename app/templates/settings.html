@@ -2,11 +2,13 @@
 <html lang="pt-BR" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Configurações Avançadas</title>
+    <title>Configurações — Zima Music</title>
+    <meta name="description" content="Ajuste autenticação, pastas, nomes de arquivo, tags, capas, letras e conversão do Zima Music.">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ static_asset('style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script>
         // Attach CSRF token for axios from meta tag on this page
@@ -17,156 +19,269 @@
     </script>
 </head>
 <body>
-    <div class="container py-5">
-        <div class="settings-top mb-5">
-            <div class="d-flex align-items-center gap-3">
-                <a href="/" class="btn btn-icon rounded-circle"><i class="fas fa-arrow-left"></i></a>
-                <div>
-                    <div class="hero-label">Centro de configuração</div>
-                    <h2 class="page-title display-font">Configurações</h2>
+    <a href="#settings-main" class="skip-link">Pular para o conteúdo</a>
+
+    <div class="container py-4 py-lg-5">
+        <div class="settings-container">
+            <div class="settings-top mb-4">
+                <div class="d-flex align-items-center gap-3">
+                    <a href="/" class="btn btn-icon rounded-circle" aria-label="Voltar para o painel" title="Voltar ao painel">
+                        <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                    </a>
+                    <div>
+                        <div class="hero-label">Centro de configuração</div>
+                        <h1 class="page-title display-font">Configurações</h1>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="/" class="btn btn-outline-secondary d-none d-sm-inline-flex">Voltar</a>
+                    <button onclick="saveSettings()" class="btn btn-accent px-4 fw-bold" type="button">
+                        <i class="fas fa-save me-2" aria-hidden="true"></i>Salvar tudo
+                    </button>
                 </div>
             </div>
-            <button onclick="saveSettings()" class="btn btn-accent px-4 fw-bold"><i class="fas fa-save me-2"></i>Salvar tudo</button>
-        </div>
 
-        <div class="settings-container">
-            <div class="settings-group">
-                <h5 class="settings-header"><i class="fas fa-lock me-2 text-warning"></i>Autenticação</h5>
+            <nav class="settings-nav" aria-label="Seções das configurações">
+                <a href="#sec-auth"><i class="fas fa-lock me-1" aria-hidden="true"></i>Autenticação</a>
+                <a href="#sec-region"><i class="fas fa-globe me-1" aria-hidden="true"></i>Região</a>
+                <a href="#sec-folders"><i class="fas fa-folder me-1" aria-hidden="true"></i>Pastas</a>
+                <a href="#sec-naming"><i class="fas fa-file-signature me-1" aria-hidden="true"></i>Nomes</a>
+                <a href="#sec-tags"><i class="fas fa-tags me-1" aria-hidden="true"></i>Tags</a>
+                <a href="#sec-covers"><i class="fas fa-image me-1" aria-hidden="true"></i>Capas</a>
+                <a href="#sec-lyrics"><i class="fas fa-music me-1" aria-hidden="true"></i>Letras</a>
+                <a href="#sec-convert"><i class="fas fa-sync-alt me-1" aria-hidden="true"></i>Conversão</a>
+            </nav>
+
+            <main id="settings-main">
+            <section class="settings-group" id="sec-auth" aria-labelledby="h-auth">
+                <h2 id="h-auth" class="h5 settings-header"><i class="fas fa-lock me-2 text-warning" aria-hidden="true"></i>Autenticação</h2>
+                <p class="settings-desc">Tokens usados para acessar o catálogo do Apple Music.</p>
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label">Media User Token</label>
+                        <label class="form-label" for="media-user-token">Media User Token</label>
                         <input type="text" id="media-user-token" class="form-control" placeholder="Token Apple Music...">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Authorization Token</label>
+                        <label class="form-label" for="authorization-token">Authorization Token</label>
                         <input type="text" id="authorization-token" class="form-control" placeholder="Bearer ...">
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="settings-group">
-                <h5 class="settings-header"><i class="fas fa-globe me-2 text-info"></i>Região & Idioma</h5>
+            <section class="settings-group" id="sec-region" aria-labelledby="h-region">
+                <h2 id="h-region" class="h5 settings-header"><i class="fas fa-globe me-2 text-info" aria-hidden="true"></i>Região &amp; Idioma</h2>
+                <p class="settings-desc">Define o idioma dos metadados e a loja consultada.</p>
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label">Idioma (Language)</label>
+                        <label class="form-label" for="language">Idioma (Language)</label>
                         <input type="text" id="language" class="form-control" placeholder="pt-BR">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Loja (Storefront)</label>
+                        <label class="form-label" for="storefront">Loja (Storefront)</label>
                         <input type="text" id="storefront" class="form-control" placeholder="br">
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="settings-group">
-                <h5 class="settings-header"><i class="fas fa-folder me-2 text-warning"></i>Pastas de Download</h5>
+            <section class="settings-group" id="sec-folders" aria-labelledby="h-folders">
+                <h2 id="h-folders" class="h5 settings-header"><i class="fas fa-folder me-2 text-warning" aria-hidden="true"></i>Pastas de download</h2>
+                <p class="settings-desc">Onde cada formato será salvo no servidor.</p>
                 <div class="row g-3">
                     <div class="col-md-4">
-                        <label class="form-label">Pasta ALAC</label>
+                        <label class="form-label" for="alac-save-folder">Pasta ALAC</label>
                         <input type="text" id="alac-save-folder" class="form-control">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Pasta Atmos</label>
+                        <label class="form-label" for="atmos-save-folder">Pasta Atmos</label>
                         <input type="text" id="atmos-save-folder" class="form-control">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Pasta AAC</label>
+                        <label class="form-label" for="aac-save-folder">Pasta AAC</label>
                         <input type="text" id="aac-save-folder" class="form-control">
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="settings-group">
-                <h5 class="settings-header"><i class="fas fa-file-signature me-2 text-primary"></i>Formato de Nomes (Naming)</h5>
+            <section class="settings-group" id="sec-naming" aria-labelledby="h-naming">
+                <h2 id="h-naming" class="h5 settings-header"><i class="fas fa-file-signature me-2 text-primary" aria-hidden="true"></i>Formato de nomes</h2>
+                <p class="settings-desc">Use variáveis como <code>{AlbumName}</code>, <code>{SongName}</code> e <code>{ArtistName}</code>.</p>
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label">Formato da Pasta do Álbum</label>
+                        <label class="form-label" for="album-folder-format">Formato da pasta do álbum</label>
                         <input type="text" id="album-folder-format" class="form-control" placeholder="{AlbumName}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Formato da Pasta da Playlist</label>
+                        <label class="form-label" for="playlist-folder-format">Formato da pasta da playlist</label>
                         <input type="text" id="playlist-folder-format" class="form-control" placeholder="{PlaylistName}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Formato do Arquivo de Música</label>
+                        <label class="form-label" for="song-file-format">Formato do arquivo de música</label>
                         <input type="text" id="song-file-format" class="form-control" placeholder="{SongNumber}. {SongName}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Formato da Pasta do Artista</label>
+                        <label class="form-label" for="artist-folder-format">Formato da pasta do artista</label>
                         <input type="text" id="artist-folder-format" class="form-control" placeholder="{ArtistName}">
                         <div class="form-text text-secondary">Deixe vazio para não criar pasta de artista.</div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="settings-group">
-                <h5 class="settings-header"><i class="fas fa-tags me-2 text-primary"></i>Tags & Metadados</h5>
+            <section class="settings-group" id="sec-tags" aria-labelledby="h-tags">
+                <h2 id="h-tags" class="h5 settings-header"><i class="fas fa-tags me-2 text-primary" aria-hidden="true"></i>Tags &amp; metadados</h2>
+                <p class="settings-desc">Marcadores adicionados aos títulos e opções de playlists.</p>
                 <div class="row g-3 mb-3">
                     <div class="col-md-4">
-                        <label class="form-label">Tag Explicit [E]</label>
+                        <label class="form-label" for="explicit-tag">Tag Explicit [E]</label>
                         <input type="text" id="explicit-tag" class="form-control" value="[E]">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Tag Clean [C]</label>
+                        <label class="form-label" for="clean-tag">Tag Clean [C]</label>
                         <input type="text" id="clean-tag" class="form-control" value="[C]">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Tag Apple Master [M]</label>
+                        <label class="form-label" for="master-tag">Tag Apple Master [M]</label>
                         <input type="text" id="master-tag" class="form-control" value="[M]">
                     </div>
                 </div>
-                <div class="d-flex gap-4 flex-wrap">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="use-song-info-for-playlist">
-                        <label class="form-check-label" for="use-song-info-for-playlist">Usar info original da música em Playlists</label>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="check-card form-check">
+                            <input class="form-check-input" type="checkbox" id="use-song-info-for-playlist">
+                            <span class="form-check-label">Usar info original da música em playlists</span>
+                        </label>
                     </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="download-album-cover-for-playlist">
-                        <label class="form-check-label" for="download-album-cover-for-playlist">Baixar capa para Playlists</label>
+                    <div class="col-md-6">
+                        <label class="check-card form-check">
+                            <input class="form-check-input" type="checkbox" id="download-album-cover-for-playlist">
+                            <span class="form-check-label">Baixar capa para playlists</span>
+                        </label>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="settings-group">
-                <h5 class="settings-header"><i class="fas fa-sync-alt me-2 text-primary"></i>Conversão (FFmpeg)</h5>
-                <div class="row g-3 mb-3">
+            <section class="settings-group" id="sec-covers" aria-labelledby="h-covers">
+                <h2 id="h-covers" class="h5 settings-header"><i class="fas fa-image me-2 text-secondary" aria-hidden="true"></i>Capas de álbum</h2>
+                <p class="settings-desc">Controle como as artes são salvas e incorporadas.</p>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="check-card form-check">
+                            <input class="form-check-input" type="checkbox" id="embed-cover">
+                            <span class="form-check-label">Incorporar capa na música</span>
+                        </label>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="check-card form-check">
+                            <input class="form-check-input" type="checkbox" id="save-artist-cover">
+                            <span class="form-check-label">Salvar capa do artista</span>
+                        </label>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="check-card form-check">
+                            <input class="form-check-input" type="checkbox" id="save-animated-artwork">
+                            <span class="form-check-label">Salvar artwork animado</span>
+                        </label>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="check-card form-check">
+                            <input class="form-check-input" type="checkbox" id="emby-animated-artwork">
+                            <span class="form-check-label">Emby animated artwork</span>
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-group" id="sec-lyrics" aria-labelledby="h-lyrics">
+                <h2 id="h-lyrics" class="h5 settings-header"><i class="fas fa-music me-2 text-info" aria-hidden="true"></i>Letras</h2>
+                <p class="settings-desc">Incorpore letras sincronizadas ou salve arquivos .lrc.</p>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="check-card form-check">
+                            <input class="form-check-input" type="checkbox" id="embed-lrc">
+                            <span class="form-check-label">Incorporar letras na música</span>
+                        </label>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="check-card form-check">
+                            <input class="form-check-input" type="checkbox" id="save-lrc-file">
+                            <span class="form-check-label">Salvar arquivo de letras</span>
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-group" id="sec-convert" aria-labelledby="h-convert">
+                <h2 id="h-convert" class="h5 settings-header"><i class="fas fa-sync-alt me-2 text-primary" aria-hidden="true"></i>Conversão (FFmpeg)</h2>
+                <p class="settings-desc">Converta automaticamente os arquivos após o download.</p>
+                <div class="row g-3 align-items-end mb-3">
                     <div class="col-md-4">
-                        <div class="form-check mt-4">
+                        <label class="check-card form-check">
                             <input class="form-check-input" type="checkbox" id="convert-after-download">
-                            <label class="form-check-label fw-bold" for="convert-after-download">Converter após baixar</label>
-                        </div>
+                            <span class="form-check-label fw-bold">Converter após baixar</span>
+                        </label>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Formato de Destino</label>
+                        <label class="form-label" for="convert-format">Formato de destino</label>
                         <input type="text" id="convert-format" class="form-control" placeholder="FLAC, MP3...">
                     </div>
                     <div class="col-md-4">
-                         <div class="form-check mt-4">
+                        <label class="check-card form-check">
                             <input class="form-check-input" type="checkbox" id="keep-original">
-                            <label class="form-check-label" for="keep-original">Manter arquivo original</label>
-                        </div>
+                            <span class="form-check-label">Manter arquivo original</span>
+                        </label>
                     </div>
                 </div>
                 <div class="row g-3">
-                     <div class="col-md-6">
-                        <label class="form-label">Caminho do FFmpeg</label>
+                    <div class="col-md-6">
+                        <label class="form-label" for="ffmpeg-path">Caminho do FFmpeg</label>
                         <input type="text" id="ffmpeg-path" class="form-control" placeholder="ffmpeg">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Argumentos Extras</label>
+                        <label class="form-label" for="ffmpeg-args">Argumentos extras</label>
                         <input type="text" id="ffmpeg-args" class="form-control" placeholder="-b:a 320k ...">
                     </div>
                 </div>
-            </div>
-            
+            </section>
+
             <div class="settings-actions mt-4 pb-5">
-                <button onclick="deleteCreds()" class="btn btn-outline-danger">Sair da Conta</button>
-                <button onclick="saveSettings()" class="btn btn-accent px-5 fw-bold btn-lg">Salvar Configurações</button>
+                <button onclick="deleteCreds()" class="btn btn-outline-danger" type="button">
+                    <i class="fas fa-right-from-bracket me-2" aria-hidden="true"></i>Sair da conta
+                </button>
+                <button onclick="saveSettings()" class="btn btn-accent px-5 fw-bold btn-lg" type="button">
+                    <i class="fas fa-save me-2" aria-hidden="true"></i>Salvar configurações
+                </button>
             </div>
+            </main>
         </div>
     </div>
 
+    <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
     <script>
+        // --- Feedback visual (toasts) ---
+        function showToast(message, type = 'info', timeout = 4000) {
+            const stack = document.getElementById('toast-stack');
+            if (!stack) { console.log('[toast]', type, message); return; }
+            const icons = {
+                success: 'fa-circle-check',
+                error: 'fa-circle-exclamation',
+                info: 'fa-circle-info',
+                warning: 'fa-triangle-exclamation'
+            };
+            const el = document.createElement('div');
+            el.className = `app-toast app-toast-${type}`;
+            el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+            el.innerHTML = `
+                <i class="fas ${icons[type] || icons.info}" aria-hidden="true"></i>
+                <span class="app-toast-msg"></span>
+                <button type="button" class="app-toast-close" aria-label="Fechar aviso">&times;</button>`;
+            el.querySelector('.app-toast-msg').textContent = message;
+            const dismiss = () => { el.classList.add('is-leaving'); setTimeout(() => el.remove(), 220); };
+            el.querySelector('.app-toast-close').addEventListener('click', dismiss);
+            stack.appendChild(el);
+            requestAnimationFrame(() => el.classList.add('is-visible'));
+            setTimeout(dismiss, timeout);
+        }
+
         // Mapeamento dos IDs do HTML para as chaves do config.yaml
         const CONFIG_MAP = {
             "media-user-token": "media-user-token",
@@ -188,6 +303,13 @@
             "master-tag": "master-tag",
             "use-song-info-for-playlist": "use-song-info-for-playlist", // bool
             "download-album-cover-for-playlist": "download-album-cover-for-playlist", // bool
+            
+            "embed-cover": "embed-cover", // bool
+            "save-artist-cover": "save-artist-cover", // bool
+            "save-animated-artwork": "save-animated-artwork", // bool
+            "emby-animated-artwork": "emby-animated-artwork", // bool
+            "embed-lrc": "embed-lrc", // bool
+            "save-lrc-file": "save-lrc-file", // bool
             
             "convert-after-download": "convert-after-download", // bool
             "convert-format": "convert-format",
@@ -215,8 +337,16 @@
                 // API key removed; nothing to load from localStorage.
             } catch(e) { 
                 console.error(e);
-                alert("Erro ao carregar configurações."); 
+                showToast("Erro ao carregar configurações.", "error");
             }
+
+            // Atalho: Ctrl/Cmd + S salva
+            document.addEventListener('keydown', (ev) => {
+                if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') {
+                    ev.preventDefault();
+                    saveSettings();
+                }
+            });
         });
 
         async function saveSettings() {
@@ -236,7 +366,7 @@
             
             // Disable save buttons and show spinner
             const saveButtons = Array.from(document.querySelectorAll('button[onclick="saveSettings()"]'));
-            saveButtons.forEach(b => { b.disabled = true; b.dataset.orig = b.innerHTML; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...'; });
+            saveButtons.forEach(b => { b.disabled = true; b.dataset.orig = b.innerHTML; b.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Salvando...'; });
 
             try {
                 const res = await axios.post("/save_config", data);
@@ -244,12 +374,12 @@
                 // API key removed; no client-side storage required.
 
                 const msg = (res && res.data && res.data.message) ? res.data.message : 'Configurações salvas com sucesso!';
-                alert(msg);
+                showToast(msg, 'success');
             } catch (e) {
                 const serverMsg = e?.response?.data?.message;
-                alert(serverMsg || 'Erro ao salvar.');
+                showToast(serverMsg || 'Erro ao salvar.', 'error');
             } finally {
-                saveButtons.forEach(b => { b.disabled = false; b.innerHTML = b.dataset.orig || 'Salvar Configurações'; });
+                saveButtons.forEach(b => { b.disabled = false; b.innerHTML = b.dataset.orig || '<i class="fas fa-save me-2"></i>Salvar configurações'; });
             }
         }
 
