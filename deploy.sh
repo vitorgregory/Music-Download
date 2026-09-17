@@ -5,7 +5,7 @@ set -euo pipefail
 # IMAGE: tag da imagem publicada no GHCR
 # SERVICE: nome do serviço definido em docker-compose.yml
 # VOLUMES: caminhos locais dos diretórios usados para persistência
-IMAGE="ghcr.io/vitorgregory/music-download:latest"
+IMAGE="ghcr.io/vitorgregory/Music-Download:latest"
 SERVICE="music-download"
 COMPOSE_FILE="docker-compose.yml"
 

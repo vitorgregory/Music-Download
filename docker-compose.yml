@@ -3,7 +3,7 @@ version: "3.9"
 services:
   music-download:
     # Use a imagem pública do GHCR ou uma tag local em build manual.
-    image: ghcr.io/vitorgregory/music-download:latest
+    image: ghcr.io/vitorgregory/Music-Download:latest
     container_name: music-download
     restart: unless-stopped
     ports:
