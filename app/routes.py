@@ -121,7 +121,9 @@ def get_state():
     
     # Detect whether required external components exist on disk
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    wrapper_path = os.path.join(base_dir, 'wrapper', 'wrapper')
+    wrapper_path = os.path.join(base_dir, 'wrapper')
+    if not os.path.exists(wrapper_path) or os.path.isdir(wrapper_path):
+        wrapper_path = os.path.join(base_dir, 'wrapper', 'wrapper')
     downloader_dir = os.path.join(base_dir, 'apple-music-downloader')
 
     return jsonify({

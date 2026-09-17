@@ -1,6 +1,7 @@
 # Dockerfile para Music-Download
-# O projeto foi validado para servidores x86_64/amd64 e não deve baixar pacotes fixos de amd64 quando o build
-# acontece em outra arquitetura. Para multi-arch, cada artefato externo precisa ter URL/arquitetura compatível.
+# Usa a imagem oficial do wrapper como fonte do executável e do ambiente rootfs, conforme a estrutura validada em ghcr.io/itouakirai/wrapper:x86.
+FROM ghcr.io/itouakirai/wrapper:x86 AS wrapper
+
 FROM ubuntu:22.04 AS runtime
 
 ARG TARGETARCH=amd64
@@ -11,6 +12,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     RUNNING_IN_DOCKER=true \
+    MUSIC_DOWNLOAD_WRAPPER=/app/wrapper/wrapper \
+    MUSIC_DOWNLOAD_WRAPPER_CACHE=/app/rootfs/data \
     TARGETARCH=${TARGETARCH} \
     PATH="/usr/local/go/bin:/app/bento4/bin:/app/wrapper:${PATH}"
 
@@ -65,16 +68,13 @@ RUN BENTO4_ARCH="${TARGETARCH:-amd64}" \
     && chmod -R a+rx /app/bento4/bin \
     && rm -rf /tmp/bento4-src /tmp/bento4.zip
 
-# Wrapper da autenticação do Apple Music. Para produção x86_64 usa o binário x86; arm64 exige outro release do wrapper.
-RUN mkdir -p /app/wrapper \
-    && if [ "${TARGETARCH:-amd64}" = "amd64" ]; then \
-         curl -fL https://github.com/itouakirai/wrapper/releases/download/x86/wrapper.x86 -o /app/wrapper/wrapper; \
-       elif [ "${TARGETARCH:-amd64}" = "arm64" ]; then \
-         echo "Unsupported arm64 build for wrapper binary in this project. Use linux/amd64 for production."; exit 1; \
-       else \
-         echo "Unsupported TARGETARCH=${TARGETARCH}"; exit 1; \
-       fi \
-    && chmod +x /app/wrapper/wrapper
+# Wrapper da autenticação do Apple Music.
+# A imagem oficial já entrega o executável + raiz de runtime (/app/rootfs) completa, incluindo /app/rootfs/dev.
+# Importante: na imagem oficial, /app/wrapper é um arquivo executável, não um diretório.
+COPY --from=wrapper /app/wrapper /app/wrapper
+COPY --from=wrapper /app/rootfs /app/rootfs
+RUN chmod 0755 /app/wrapper \
+    && mkdir -p /app/rootfs/dev /app/rootfs/data /app/rootfs/system
 
 # Clona o downloader Go e baixa as dependências do módulo
 RUN git clone --depth 1 \

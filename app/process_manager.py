@@ -126,20 +126,28 @@ class WrapperManager(ProcessManager):
 
     def start(self, email, password):
         if self.running: return False
-        
-        wrapper_path = os.path.join(self.base_dir, "wrapper", "wrapper")
+
+        base_wrapper_path = os.path.join(self.base_dir, "wrapper")
+        legacy_wrapper_path = os.path.join(self.base_dir, "wrapper", "wrapper")
+        wrapper_path = base_wrapper_path if os.path.exists(base_wrapper_path) and os.path.isfile(base_wrapper_path) else legacy_wrapper_path
+        rootfs_dir = os.path.join(self.base_dir, "rootfs")
+
         # Verify wrapper binary exists
-        if not os.path.exists(wrapper_path):
+        if not os.path.exists(wrapper_path) or not os.path.isfile(wrapper_path):
             self._log(f"Erro Wrapper: binary not found at {wrapper_path}")
             return False
+        if not os.path.exists(rootfs_dir):
+            self._log(f"Erro Wrapper: rootfs not found at {rootfs_dir}")
+            return False
+
         cmd = [wrapper_path, "-L", f"{email}:{password}"]
-        
+
         try:
             env = os.environ.copy()
             env["TERM"] = "dumb"
             kwargs = dict(stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                           stdin=subprocess.PIPE, bufsize=1, universal_newlines=True,
-                          cwd=os.path.dirname(wrapper_path), env=env)
+                          cwd=self.base_dir, env=env)
             if platform.system() == 'Windows':
                 kwargs.update(creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
             else:
