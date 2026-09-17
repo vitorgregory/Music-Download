@@ -1,6 +1,6 @@
 # Dockerfile para Music-Download
 # Stack real: Flask + Socket.IO + Go downloader + wrapper native + FFmpeg + Bento4
-FROM ubuntu:22.04 AS runtime
+FROM ubuntu:20.04 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
