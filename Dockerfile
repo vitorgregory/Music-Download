@@ -71,14 +71,6 @@ RUN BENTO4_ARCH="${TARGETARCH:-amd64}" \
     && chmod -R a+rx /app/bento4/bin \
     && rm -rf /tmp/bento4-src /tmp/bento4.zip
 
-# Wrapper da autenticação do Apple Music.
-# A imagem oficial já entrega o executável + raiz de runtime (/app/rootfs) completa, incluindo /app/rootfs/dev.
-# Importante: na imagem oficial /app/wrapper é um arquivo executável, não um diretório.
-COPY --from=wrapper /app/wrapper /app/wrapper
-COPY --from=wrapper /app/rootfs /app/rootfs
-RUN mkdir -p /app/config/wrapper /app/rootfs/dev /app/rootfs/data /app/rootfs/system \
-    && chmod 0755 /app/wrapper
-
 # Clona o downloader Go e baixa as dependências do módulo
 RUN git clone --depth 1 \
        https://github.com/zhaarey/apple-music-downloader \
@@ -89,8 +81,15 @@ RUN git clone --depth 1 \
 # Copia o código da aplicação web
 COPY . /app
 
+# Wrapper da autenticação do Apple Music.
+# A imagem oficial já entrega o executável + raiz de runtime (/app/rootfs) completa, incluindo /app/rootfs/dev.
+# Essas cópias ficam depois do contexto da aplicação para impedir sobrescrita acidental.
+COPY --from=wrapper /app/wrapper /app/wrapper
+COPY --from=wrapper /app/rootfs /app/rootfs
+
 # Estruturas persistentes esperadas pela aplicação
-RUN mkdir -p /app/data /app/downloads /app/config
+RUN mkdir -p /app/data /app/downloads /app/config/wrapper /app/rootfs/dev /app/rootfs/data /app/rootfs/system \
+    && chmod 0755 /app/wrapper
 
 EXPOSE 5000
 
