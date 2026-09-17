@@ -1,57 +1,67 @@
-# Usamos o Ubuntu 22.04 como base (Equilíbrio entre modernidade e compatibilidade)
-FROM ubuntu:22.04
+# Dockerfile para Music-Download
+# Stack real: Flask + Socket.IO + Go downloader + wrapper native + FFmpeg + Bento4
+FROM ubuntu:22.04 AS runtime
 
-# Configurações de ambiente
-ENV DEBIAN_FRONTEND=noninteractive
-ENV RUNNING_IN_DOCKER=true
-# Adiciona Go e Bento4 ao PATH global
-ENV PATH="/usr/local/go/bin:/app/bento4/bin:${PATH}"
-
-# 1. Instalar dependências de sistema (ffmpeg, python, git, etc)
-RUN apt-get update && apt-get install -y \
-    python3 python3-pip ffmpeg git wget unzip gpac ca-certificates curl gnupg \
-    && rm -rf /var/lib/apt/lists/*
-
-# 2. Instalar libssl1.1 (Necessário para o Bento4 funcionar no Ubuntu 22.04)
-RUN echo "deb http://security.ubuntu.com/ubuntu focal-security main" | tee /etc/apt/sources.list.d/focal-security.list \
-    && apt-get update && apt-get install -y libssl1.1 \
-    && rm /etc/apt/sources.list.d/focal-security.list && apt-get update
-
-# 3. Instalar Go 1.23.2 (Versão oficial mais recente)
-RUN wget -q https://go.dev/dl/go1.23.2.linux-amd64.tar.gz \
-    && rm -rf /usr/local/go && tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz \
-    && rm go1.23.2.linux-amd64.tar.gz
-
-# 4. Link simbólico Python
-RUN ln -s /usr/bin/python3 /usr/bin/python
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    RUNNING_IN_DOCKER=true \
+    PATH="/usr/local/go/bin:/app/bento4/bin:${PATH}"
 
 WORKDIR /app
 
-# 5. Instalar dependências Python
-COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Dependências do sistema exigidas pela app e pelos binários externos
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-venv ffmpeg git wget unzip gpac ca-certificates curl gnupg \
+    && rm -rf /var/lib/apt/lists/*
 
-# 6. Setup Bento4 (Baixar e configurar durante o build)
-RUN mkdir -p bento4 && \
-    wget -q https://www.bok.net/Bento4/binaries/Bento4-SDK-1-6-0-641.x86_64-unknown-linux.zip -O bento4.zip && \
-    unzip -q bento4.zip -d bento4 && rm bento4.zip && \
-    # Organizar binários e dar permissão de execução
-    mv bento4/Bento4-SDK-1-6-0-641.x86_64-unknown-linux/bin/* bento4/ && \
-    chmod -R +x bento4
+# libssl1.1 é necessário para o Bento4 funcionar em Ubuntu 22.04
+RUN echo "deb http://security.ubuntu.com/ubuntu focal-security main" | tee /etc/apt/sources.list.d/focal-security.list \
+    && apt-get update && apt-get install -y --no-install-recommends libssl1.1 \
+    && rm -rf /var/lib/apt/lists/* /etc/apt/sources.list.d/focal-security.list \
+    && apt-get update
 
-# 7. Setup Wrapper
-RUN mkdir -p wrapper && \
-    wget -q https://github.com/WorldObservationLog/wrapper/releases/download/Wrapper.x86_64.0df45b5/Wrapper.x86_64.0df45b5.zip -O wrapper.zip && \
-    unzip -q wrapper.zip -d wrapper && rm wrapper.zip && \
-    chmod +x wrapper/wrapper
+# Go 1.23.2 para compilar/rodar o downloader Go no container
+RUN wget -q https://go.dev/dl/go1.23.2.linux-amd64.tar.gz \
+    && rm -rf /usr/local/go \
+    && tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz \
+    && rm go1.23.2.linux-amd64.tar.gz
 
-# 8. Setup Downloader (Clone e pré-download de módulos Go)
-RUN git clone https://github.com/zhaarey/apple-music-downloader apple-music-downloader && \
-    cd apple-music-downloader && \
+# Python aponta para python3 para facilitar compatibilidade
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# Instala dependências Python da aplicação
+COPY requirements.txt ./requirements.txt
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir -r requirements.txt
+
+# Bento4 SDK
+RUN mkdir -p /app/bento4 && \
+    wget -q https://www.bok.net/Bento4/binaries/Bento4-SDK-1-6-0-641.x86_64-unknown-linux.zip -O /tmp/bento4.zip && \
+    unzip -q /tmp/bento4.zip -d /tmp/bento4-src && \
+    mv /tmp/bento4-src/Bento4-SDK-1-6-0-641.x86_64-unknown-linux/bin/* /app/bento4/ && \
+    chmod -R +x /app/bento4 && \
+    rm -rf /tmp/bento4-src /tmp/bento4.zip
+
+# Wrapper da autenticação do Apple Music
+RUN mkdir -p /app/wrapper && \
+    wget -q https://github.com/WorldObservationLog/wrapper/releases/download/Wrapper.x86_64.0df45b5/Wrapper.x86_64.0df45b5.zip -O /tmp/wrapper.zip && \
+    unzip -q /tmp/wrapper.zip -d /tmp/wrapper-src && \
+    cp /tmp/wrapper-src/wrapper /app/wrapper/wrapper && \
+    chmod +x /app/wrapper/wrapper && \
+    rm -rf /tmp/wrapper-src /tmp/wrapper.zip
+
+# Clona o downloader Go e baixa dependências do módulo para reduzir tempo de boot
+RUN git clone https://github.com/zhaarey/apple-music-downloader /app/apple-music-downloader && \
+    cd /app/apple-music-downloader && \
     go mod download
 
-# 9. Copiar código da aplicação
-COPY . .
+# Copia código da aplicação web
+COPY . /app
+
+# Estruturas persistentes esperadas pela app
+RUN mkdir -p /app/data /app/downloads /app/config
 
 EXPOSE 5000
+
 CMD ["python", "main.py"]

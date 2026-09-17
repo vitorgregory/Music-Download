@@ -66,6 +66,21 @@ def clear_2fa_cache():
             os.remove(get_2fa_cache_path())
     except: pass
 
+
+def submit_cached_2fa_if_needed():
+    cached_2fa = load_2fa_cache()
+    if not cached_2fa:
+        return False
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if wrapper.needs_2fa:
+            wrapper.write_input(cached_2fa)
+            wrapper.cached_2fa_attempt = True
+            return True
+        time.sleep(0.2)
+    return False
+
 # --- Rotas Principais ---
 
 @app.route("/")
@@ -74,15 +89,8 @@ def index():
     creds = load_creds()
     if creds[0] and not wrapper.running:
         wrapper.start(creds[0], creds[1])
-        # Se temos 2FA em cache, tenta usar automaticamente após delay
-        cached_2fa = load_2fa_cache()
-        if cached_2fa:
-            def attempt_2fa():
-                time.sleep(2)  # Aguarda o prompt de 2FA aparecer
-                if wrapper.needs_2fa:
-                    wrapper.write_input(cached_2fa)
-                    wrapper.cached_2fa_attempt = True
-            threading.Thread(target=attempt_2fa, daemon=True).start()
+        if load_2fa_cache():
+            threading.Thread(target=submit_cached_2fa_if_needed, daemon=True).start()
     return render_template("index.html")
 
 @app.route("/settings")
@@ -293,12 +301,8 @@ def reconnect_offline():
     
     # Inicia com credenciais em cache
     if wrapper.start(creds[0], creds[1]):
-        # Se temos 2FA em cache, envia automaticamente
-        if cached_2fa:
-            time.sleep(1)  # Aguarda o prompt de 2FA
-            wrapper.write_input(cached_2fa)
-            wrapper.cached_2fa_attempt = True
-        return jsonify({"status": "ok", "used_2fa_cache": bool(cached_2fa)})
+        used_2fa_cache = bool(cached_2fa) and submit_cached_2fa_if_needed()
+        return jsonify({"status": "ok", "used_2fa_cache": used_2fa_cache})
     return jsonify({"status": "error"})
 
 @app.route("/submit_2fa", methods=["POST"])
@@ -307,9 +311,9 @@ def submit_2fa():
     code = (request.form.get("twofa_code") or "").strip()
     if not code:
         return jsonify({"status": "error", "message": "Código 2FA inválido."}), 400
-    # Salva o código em cache para uso offline
     save_2fa_cache(code)
-    wrapper.write_input(code)
+    if wrapper.process and wrapper.process.poll() is None:
+        wrapper.write_input(code)
     return jsonify({"status": "ok"})
 
 @app.route("/submit_selection", methods=["POST"])

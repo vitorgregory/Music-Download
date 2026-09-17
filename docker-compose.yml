@@ -1,37 +1,35 @@
+version: "3.9"
+
 services:
-  apple-music-web:
-    build: .
-    container_name: apple-music-web-beta
+  music-download:
+    # Use a imagem pública do GHCR ou uma tag local em build manual.
+    image: ghcr.io/vitorgregory/music-download:latest
+    container_name: music-download
+    restart: unless-stopped
     ports:
       - "5000:5000"
     volumes:
-      - music-download-data:/app/data
-      - /media/Biblioteca/Media/Music:/app/downloads
-      - /DATA/AppData/music-download/config:/app/apple-music-downloader
-    restart: unless-stopped
+      # Persistência do banco e credenciais da aplicação
+      - ./data:/app/data
+      # Pasta onde os downloads finais serão salvos
+      - ./downloads:/app/downloads
+      # Configuração do downloader Go (config.yaml e ajustes do processo externo)
+      - ./config:/app/apple-music-downloader
     environment:
-      - FLASK_DEBUG=0
-      - RATELIMIT_STORAGE_URL=redis://redis:6379
+      PYTHONUNBUFFERED: "1"
+      FLASK_DEBUG: "0"
+      DISABLE_QUEUE_WORKER: "0"
+      STALL_TIMEOUT_SECONDS: "300"
+      MAX_RETRIES: "3"
+      RETRY_BASE_SECONDS: "5"
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5000/health || exit 1"]
       interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2048M
-    mem_limit: 2048m
-
-  redis:
-    image: redis:7-alpine
-    container_name: apple-music-redis
-    restart: unless-stopped
-    volumes:
-      - redis-data:/data
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
 volumes:
-  redis-data:
-  music-download-data:
+  data:
+  downloads:
+  config:

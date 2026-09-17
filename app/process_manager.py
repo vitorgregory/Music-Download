@@ -54,7 +54,7 @@ class ProcessManager:
         with self._lock:
             proc = self.process
             running = self.running
-        if proc and running:
+        if proc and running and proc.poll() is None and getattr(proc, 'stdin', None) is not None:
             try:
                 proc.stdin.write(f"{text}\n")
                 proc.stdin.flush()
@@ -99,6 +99,30 @@ class WrapperManager(ProcessManager):
         self.last_output_at = None
         self.needs_2fa = False
         self.cached_2fa_attempt = False
+
+    def _set_2fa_state(self, enabled):
+        with self._lock:
+            self.needs_2fa = bool(enabled)
+            if not enabled:
+                self.cached_2fa_attempt = False
+
+    def _looks_like_2fa_prompt(self, text):
+        lower = text.lower()
+        if not lower:
+            return False
+
+        has_2fa_signal = any(token in lower for token in [
+            "2fa", "otp", "one-time", "verification code", "authentication code",
+            "enter the code", "verify code", "security code"
+        ])
+        if not has_2fa_signal:
+            return False
+
+        auth_context = any(token in lower for token in [
+            "credentialhandler", "credential handler", "auth", "authenticate",
+            "login", "verification", "verify", "code"
+        ])
+        return auth_context
 
     def start(self, email, password):
         if self.running: return False
@@ -147,17 +171,20 @@ class WrapperManager(ProcessManager):
                     continue
                 clean = strip_ansi(line)
                 self._log(line)
-                # Detectores de Estado
-                if "credentialhandler" in clean.lower() and "2fa" in clean.lower():
-                    with self._lock:
-                        self.needs_2fa = True
+                clean_lower = clean.lower()
+
+                if self._looks_like_2fa_prompt(clean):
+                    self._set_2fa_state(True)
                     self._log(">>> 2FA NECESSÁRIO - Digite o código <<<")
-                if "response type 6" in clean.lower() or "success" in clean.lower():
-                    with self._lock:
-                        self.needs_2fa = False
-                    self.cached_2fa_attempt = False
+
+                if any(token in clean_lower for token in [
+                    "response type 6", "authentication successful", "logged in successfully",
+                    "login successful", "2fa verified", "verified successfully"
+                ]):
+                    self._set_2fa_state(False)
+
                 # Detecta falhas de conexão (network, timeout, etc)
-                if any(err in clean.lower() for err in ["network", "timeout", "connection refused", "connection reset", "offline", "unreachable"]):
+                if any(err in clean_lower for err in ["network", "timeout", "connection refused", "connection reset", "offline", "unreachable"]):
                     self._log(">>> Queda de internet detectada - Tentando reconectar offline <<<")
         finally:
             with self._lock:
@@ -166,11 +193,14 @@ class WrapperManager(ProcessManager):
 class DownloaderManager(ProcessManager):
     def __init__(self):
         super().__init__()
+        self.current_format = "alac"
+        self.is_playlist = False
         # Pré-compila Regex para performance
         self.re_table = re.compile(r"^\s*\|\s*(\d+)\s*\|")
         self.re_list = re.compile(r"(?:^|\s|\[\w+\]\s+)(\d+)\s*[\.\:\-\)\]]\s+(.+)$")
         self.selection_keywords = [
-            "select:", "enter choice", "choice:", "selection:",
+            "select:", "select one option", "select an option", "select one option from the list",
+            "enter choice", "choice:", "selection:",
             "select item", "select items", "select a number", "enter a number",
             "choose:", "choose a number", "selecione", "escolha",
             "please select", "select from", "select all",
@@ -300,7 +330,7 @@ class DownloaderManager(ProcessManager):
             # Ignore table separators (ASCII or unicode box drawing)
             if "+---" in clean or "ALBUM NAME" in clean or "─" in clean or "┼" in clean or "┌" in clean or "└" in clean:
                 continue
-            
+
             # Tenta Tabela
             m = self.re_table.search(clean)
             if m:
@@ -309,16 +339,26 @@ class DownloaderManager(ProcessManager):
                 if parsed:
                     options.insert(0, parsed)
                 continue
-            
+
             # Tenta Lista
             m = self.re_list.search(clean)
             if m:
                 meta = analyze_label_metadata(m.group(2).strip())
                 options.insert(0, {
-                    "id": m.group(1), "label": meta['label'], "type": meta['type'], 
+                    "id": m.group(1), "label": meta['label'], "type": meta['type'],
                     "tags": meta['tags'], "date": "", "duration": "", "extra": ""
                 })
         return options
+
+    def _merge_options(self, candidates):
+        merged = []
+        seen = set()
+        for option in list(candidates or []):
+            key = (option.get('id'), option.get('label'))
+            if key and key not in seen:
+                merged.append(option)
+                seen.add(key)
+        return merged
 
     def _stream_logs(self):
         log_buffer = []
@@ -375,33 +415,18 @@ class DownloaderManager(ProcessManager):
                         self._log(">>> PROMPT DETECTADO, AGUARDANDO OPÇÕES <<<")
 
                 # If prompt arrived before options, keep retrying as new lines arrive
-                if self.needs_input and not self.input_options:
+                if self.needs_input:
                     retry_options = self._parse_options(log_buffer)
                     if retry_options:
+                        merged = self._merge_options(self.input_options + retry_options)
                         with self._lock:
-                            self.input_options = retry_options
+                            self.input_options = merged
                         self._log(">>> OPÇÕES DETECTADAS, AGUARDANDO SELEÇÃO <<<")
                         try:
                             from . import socketio
                             socketio.emit('selection_required', {
-                                'options': retry_options,
-                                'options_count': len(retry_options)
-                            }, skip_sid=True)
-                        except Exception as e:
-                            self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")
-
-                # If prompt arrived before options, retry parse as new lines arrive
-                if self.needs_input and not self.input_options:
-                    retry_options = self._parse_options(log_buffer)
-                    if retry_options:
-                        with self._lock:
-                            self.input_options = retry_options
-                        self._log(">>> OPÇÕES DETECTADAS, AGUARDANDO SELEÇÃO <<<")
-                        try:
-                            from . import socketio
-                            socketio.emit('selection_required', {
-                                'options': retry_options,
-                                'options_count': len(retry_options)
+                                'options': merged,
+                                'options_count': len(merged)
                             }, skip_sid=True)
                         except Exception as e:
                             self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")
