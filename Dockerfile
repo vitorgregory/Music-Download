@@ -12,10 +12,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     RUNNING_IN_DOCKER=true \
-    MUSIC_DOWNLOAD_WRAPPER=/app/wrapper/wrapper \
-    MUSIC_DOWNLOAD_WRAPPER_CACHE=/app/rootfs/data \
+    WRAPPER_BIN=/app/wrapper \
+    WRAPPER_ROOTFS=/app/rootfs \
+    WRAPPER_CACHE_DIR=/app/config/wrapper \
+    MUSIC_DOWNLOAD_WRAPPER=/app/wrapper \
+    MUSIC_DOWNLOAD_WRAPPER_CACHE=/app/config/wrapper \
     TARGETARCH=${TARGETARCH} \
-    PATH="/usr/local/go/bin:/app/bento4/bin:/app/wrapper:${PATH}"
+    PATH="/usr/local/go/bin:/app/bento4/bin:/app:${PATH}"
 
 WORKDIR /app
 
@@ -70,11 +73,11 @@ RUN BENTO4_ARCH="${TARGETARCH:-amd64}" \
 
 # Wrapper da autenticação do Apple Music.
 # A imagem oficial já entrega o executável + raiz de runtime (/app/rootfs) completa, incluindo /app/rootfs/dev.
-# Importante: na imagem oficial, /app/wrapper é um arquivo executável, não um diretório.
+# Importante: na imagem oficial /app/wrapper é um arquivo executável, não um diretório.
 COPY --from=wrapper /app/wrapper /app/wrapper
 COPY --from=wrapper /app/rootfs /app/rootfs
-RUN chmod 0755 /app/wrapper \
-    && mkdir -p /app/rootfs/dev /app/rootfs/data /app/rootfs/system
+RUN mkdir -p /app/config/wrapper /app/rootfs/dev /app/rootfs/data /app/rootfs/system \
+    && chmod 0755 /app/wrapper
 
 # Clona o downloader Go e baixa as dependências do módulo
 RUN git clone --depth 1 \

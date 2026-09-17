@@ -1,4 +1,5 @@
-from app.process_manager import DownloaderManager, WrapperManager
+from pathlib import Path
+from app.process_manager import DownloaderManager, WrapperManager, get_wrapper_bin_path, get_wrapper_cache_dir, get_wrapper_rootfs_path
 
 
 SAMPLE_TABLE = [
@@ -89,3 +90,22 @@ def test_downloader_detects_alternative_selection_prompt():
     assert downloader.needs_input is True
     assert len(downloader.input_options) >= 2
     assert downloader.input_options[0]['id'] == '1'
+
+
+def test_wrapper_paths_use_environment(monkeypatch, tmp_path):
+    bindir = tmp_path / 'bin'
+    bindir.mkdir()
+    wrapper_bin = bindir / 'wrapper'
+    wrapper_bin.write_text('#!/bin/sh\n')
+    rootfs = tmp_path / 'rootfs'
+    rootfs.mkdir()
+    cache = tmp_path / 'cache' / 'wrapper'
+
+    monkeypatch.setenv('WRAPPER_BIN', str(wrapper_bin))
+    monkeypatch.setenv('WRAPPER_ROOTFS', str(rootfs))
+    monkeypatch.setenv('WRAPPER_CACHE_DIR', str(cache))
+
+    assert get_wrapper_bin_path() == wrapper_bin.resolve()
+    assert get_wrapper_rootfs_path() == rootfs.resolve()
+    assert get_wrapper_cache_dir() == cache.resolve()
+    assert get_wrapper_cache_dir().exists()

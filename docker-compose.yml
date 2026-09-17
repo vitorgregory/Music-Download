@@ -1,24 +1,21 @@
-version: "3.9"
-
 services:
   music-download:
-    # Use a imagem pública do GHCR ou uma tag local em build manual.
     image: ghcr.io/vitorgregory/music-download:latest
-    container_name: music-download
+    platform: linux/amd64
     restart: unless-stopped
     ports:
       - "5000:5000"
     volumes:
-      # Persistência do banco e credenciais da aplicação
-      - ./data:/app/data
-      # Pasta onde os downloads finais serão salvos
-      - ./downloads:/app/downloads
-      # Configuração do downloader Go (config.yaml e ajustes do processo externo)
-      - ./config:/app/apple-music-downloader
+      - /DATA/AppData/music-download/data:/app/data
+      - /DATA/AppData/music-download/downloads:/app/downloads
+      - /DATA/AppData/music-download/config:/app/config
     environment:
       PYTHONUNBUFFERED: "1"
       FLASK_DEBUG: "0"
       DISABLE_QUEUE_WORKER: "0"
+      WRAPPER_BIN: "/app/wrapper"
+      WRAPPER_ROOTFS: "/app/rootfs"
+      WRAPPER_CACHE_DIR: "/app/config/wrapper"
       STALL_TIMEOUT_SECONDS: "300"
       MAX_RETRIES: "3"
       RETRY_BASE_SECONDS: "5"
@@ -28,8 +25,3 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
-
-volumes:
-  data:
-  downloads:
-  config:

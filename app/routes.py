@@ -1,7 +1,8 @@
+from pathlib import Path
 from flask import render_template, request, jsonify
 from urllib.parse import urlparse, parse_qs
 from . import app, limiter, csrf
-from .process_manager import wrapper, downloader
+from .process_manager import wrapper, downloader, get_wrapper_bin_path, get_wrapper_cache_dir, get_wrapper_rootfs_path
 from .utils import fetch_metadata, get_config, save_config, validate_config_payload, is_valid_apple_music_url, sanitize_title
 from .crypto import encrypt_str, decrypt_str
 from app.queue_manager import add_to_queue, get_queue_status, set_pause, cancel_current_task, cancel_pending_task, move_queue_item, STALL_TIMEOUT_SECONDS   
@@ -120,11 +121,8 @@ def get_state():
     q_status['items'] = items
     
     # Detect whether required external components exist on disk
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    wrapper_path = os.path.join(base_dir, 'wrapper')
-    if not os.path.exists(wrapper_path) or os.path.isdir(wrapper_path):
-        wrapper_path = os.path.join(base_dir, 'wrapper', 'wrapper')
-    downloader_dir = os.path.join(base_dir, 'apple-music-downloader')
+    wrapper_path = get_wrapper_bin_path()
+    downloader_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'apple-music-downloader')
 
     return jsonify({
         "wrapper": {
@@ -246,19 +244,16 @@ def login_wrapper():
     # 1. Para o processo atual
     wrapper.stop()
     time.sleep(1)
-    # 2. Limpa cache antigo
-    wrapper_dir = os.path.dirname(os.path.join(os.path.dirname(os.path.abspath(__file__)), "wrapper", "wrapper"))
-    
+    # 2. Limpa cache antigo do wrapper em um diretório persistente, separado do binário.
+    cache_dir = get_wrapper_cache_dir()
     try:
-        for item in os.listdir(wrapper_dir):
-            if item.endswith(".json") or item == "cache":
-                path = os.path.join(wrapper_dir, item)
-                if os.path.isfile(path):
-                    os.remove(path)
-                    print(f"[LOGIN] Cache deletado: {item}")
-                elif os.path.isdir(path):
-                    shutil.rmtree(path)
-                    print(f"[LOGIN] Pasta cache deletada: {item}")
+        for item in cache_dir.iterdir():
+            if item.is_file():
+                item.unlink()
+            elif item.is_dir():
+                shutil.rmtree(item)
+    except FileNotFoundError:
+        cache_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         print(f"[LOGIN WARNING] Falha ao limpar cache: {e}")
 
@@ -288,16 +283,16 @@ def reconnect_offline():
     wrapper.stop()
     time.sleep(0.5)
     
-    # Limpa apenas o cache de cookies/session, não as credenciais
-    wrapper_dir = os.path.dirname(os.path.join(os.path.dirname(os.path.abspath(__file__)), "wrapper", "wrapper"))
+    # Limpa apenas o cache do wrapper em /app/config/wrapper, sem tocar no binário nem na rootfs do runtime.
+    cache_dir = get_wrapper_cache_dir()
     try:
-        for item in os.listdir(wrapper_dir):
-            if item.endswith(".json") or item == "cache":
-                path = os.path.join(wrapper_dir, item)
-                if os.path.isfile(path):
-                    os.remove(path)
-                elif os.path.isdir(path):
-                    shutil.rmtree(path)
+        for item in cache_dir.iterdir():
+            if item.is_file():
+                item.unlink()
+            elif item.is_dir():
+                shutil.rmtree(item)
+    except FileNotFoundError:
+        cache_dir.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
     

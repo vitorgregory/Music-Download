@@ -5,8 +5,52 @@ import re
 import time
 import platform
 import signal
+from pathlib import Path
 from collections import deque
 from .utils import strip_ansi, analyze_label_metadata, generate_m3u_playlist, fetch_metadata
+
+APP_ROOT = Path(__file__).resolve().parent.parent
+
+
+def resolve_path(raw_value, default_value):
+    if raw_value:
+        candidate = Path(raw_value)
+        if not candidate.is_absolute():
+            candidate = (APP_ROOT / candidate).resolve(strict=False)
+        return candidate.resolve(strict=False)
+    candidate = Path(default_value)
+    if not candidate.is_absolute():
+        candidate = (APP_ROOT / candidate).resolve(strict=False)
+    return candidate.resolve(strict=False)
+
+
+def get_wrapper_bin_path():
+    configured = os.environ.get("WRAPPER_BIN")
+    candidates = []
+    if configured:
+        candidates.append(resolve_path(configured, "/app/wrapper"))
+    candidates.extend([
+        resolve_path("/app/wrapper", "/app/wrapper"),
+        resolve_path("/app/wrapper/wrapper", "/app/wrapper/wrapper"),
+        (APP_ROOT / "wrapper").resolve(strict=False),
+        (APP_ROOT / "wrapper" / "wrapper").resolve(strict=False),
+    ])
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return resolve_path(os.environ.get("WRAPPER_BIN", "/app/wrapper"), "/app/wrapper")
+
+
+def get_wrapper_rootfs_path():
+    configured = os.environ.get("WRAPPER_ROOTFS")
+    return resolve_path(configured, "/app/rootfs")
+
+
+def get_wrapper_cache_dir():
+    configured = os.environ.get("WRAPPER_CACHE_DIR")
+    cache_dir = resolve_path(configured, "/app/config/wrapper")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 class ProcessManager:
     def __init__(self):
@@ -127,27 +171,27 @@ class WrapperManager(ProcessManager):
     def start(self, email, password):
         if self.running: return False
 
-        base_wrapper_path = os.path.join(self.base_dir, "wrapper")
-        legacy_wrapper_path = os.path.join(self.base_dir, "wrapper", "wrapper")
-        wrapper_path = base_wrapper_path if os.path.exists(base_wrapper_path) and os.path.isfile(base_wrapper_path) else legacy_wrapper_path
-        rootfs_dir = os.path.join(self.base_dir, "rootfs")
+        wrapper_path = get_wrapper_bin_path()
+        rootfs_dir = get_wrapper_rootfs_path()
 
-        # Verify wrapper binary exists
-        if not os.path.exists(wrapper_path) or not os.path.isfile(wrapper_path):
+        if not wrapper_path.exists() or not wrapper_path.is_file():
             self._log(f"Erro Wrapper: binary not found at {wrapper_path}")
             return False
-        if not os.path.exists(rootfs_dir):
+        if not rootfs_dir.exists() or not rootfs_dir.is_dir():
             self._log(f"Erro Wrapper: rootfs not found at {rootfs_dir}")
             return False
 
-        cmd = [wrapper_path, "-L", f"{email}:{password}"]
+        cmd = [str(wrapper_path), "-L", f"{email}:{password}"]
 
         try:
             env = os.environ.copy()
             env["TERM"] = "dumb"
+            env.setdefault("WRAPPER_BIN", str(wrapper_path))
+            env.setdefault("WRAPPER_ROOTFS", str(rootfs_dir))
+            env.setdefault("WRAPPER_CACHE_DIR", str(get_wrapper_cache_dir()))
             kwargs = dict(stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                           stdin=subprocess.PIPE, bufsize=1, universal_newlines=True,
-                          cwd=self.base_dir, env=env)
+                          cwd=str(APP_ROOT), env=env)
             if platform.system() == 'Windows':
                 kwargs.update(creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
             else:
