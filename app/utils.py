@@ -49,6 +49,8 @@ MEDIA_CATEGORY_LABELS = {
     "unknown": "Tipo desconhecido",
 }
 
+RELEASE_KINDS = {"album", "ep", "single", "music_video", "compilation", "unknown", "live", "playlist", "song"}
+
 
 def _coerce_track_count(value):
     try:
@@ -170,7 +172,7 @@ def normalize_media_item(raw_item, endpoint_type=None):
         "isVideo": category == "music_video",
         "isAudio": category in {"album", "single", "ep", "live", "compilation", "playlist", "song"},
         "selectable": bool(raw_item.get("id") or attributes.get("id")),
-        "track_count": track_count if track_count is not None else 0,
+        "track_count": track_count,
         "total_duration_sec": duration_seconds,
         "duration_sec": int(duration_seconds) if duration_seconds is not None else None,
         "duration": duration or "",

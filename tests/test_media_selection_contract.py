@@ -52,7 +52,7 @@ def test_normalize_media_categories_use_structural_fields():
 def test_submit_selection_returns_explicit_success_contract(monkeypatch):
     downloader.needs_input = True
     downloader.selection_id = "selection-test"
-    downloader.input_options = [{"id": "1", "category": "album", "selectable": True}]
+    downloader.input_options = [{"id": "1", "kind": "album", "track_count": 10, "selectable": True}]
     monkeypatch.setattr(downloader, "write_input", lambda value: True)
 
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
@@ -75,7 +75,7 @@ def test_submit_selection_returns_explicit_success_contract(monkeypatch):
 def test_submit_selection_rejects_stale_or_unknown_ids(monkeypatch):
     downloader.needs_input = True
     downloader.selection_id = "selection-current"
-    downloader.input_options = [{"id": "1", "category": "album", "selectable": True}]
+    downloader.input_options = [{"id": "1", "kind": "album", "track_count": 10, "selectable": True}]
     monkeypatch.setattr(downloader, "write_input", lambda value: True)
 
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
@@ -93,6 +93,22 @@ def test_submit_selection_rejects_stale_or_unknown_ids(monkeypatch):
     assert stale.get_json()["error_code"] == "STALE_SELECTION"
     assert unknown.status_code == 400
     assert unknown.get_json()["error_code"] == "INVALID_SELECTION"
+
+
+def test_submit_selection_rejects_release_without_track_count(monkeypatch):
+    downloader.needs_input = True
+    downloader.selection_id = "selection-incomplete"
+    downloader.input_options = [{"id": "1", "kind": "album", "selectable": True}]
+    monkeypatch.setattr(downloader, "write_input", lambda value: True)
+
+    app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+    response = app.test_client().post(
+        "/submit_selection",
+        data={"selection": "1", "selection_id": "selection-incomplete"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error_code"] == "INCOMPLETE_RELEASE_METADATA"
 
 
 def test_skip_selection_returns_explicit_success_contract(monkeypatch):

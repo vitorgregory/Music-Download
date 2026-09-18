@@ -3,7 +3,7 @@ from flask import render_template, request, jsonify
 from urllib.parse import urlparse, parse_qs
 from . import app, limiter, csrf
 from .process_manager import wrapper, downloader, get_wrapper_bin_path, get_wrapper_cache_dir, get_wrapper_rootfs_path
-from .utils import fetch_metadata, get_config, save_config, validate_config_payload, is_valid_apple_music_url, sanitize_title
+from .utils import fetch_metadata, get_config, save_config, validate_config_payload, is_valid_apple_music_url, sanitize_title, RELEASE_KINDS
 from .crypto import encrypt_str, decrypt_str
 from app.queue_manager import add_to_queue, get_queue_status, set_pause, cancel_current_task, cancel_pending_task, move_queue_item, STALL_TIMEOUT_SECONDS   
 import os
@@ -387,8 +387,16 @@ def submit_selection():
         return jsonify({"success": False, "accepted": False, "error_code": "INVALID_SELECTION", "message": "Itens duplicados ou seleção vazia."}), 400
     if any(item_id not in available for item_id in selected_ids):
         return jsonify({"success": False, "accepted": False, "error_code": "INVALID_SELECTION", "message": "Um ou mais itens não pertencem à seleção atual."}), 400
-    if any(available[item_id].get("selectable") is not True for item_id in selected_ids):
+    selected_options = [available[item_id] for item_id in selected_ids]
+    if any(option.get("selectable") is not True for option in selected_options):
         return jsonify({"success": False, "accepted": False, "error_code": "UNSUPPORTED_CATEGORY", "message": "A seleção contém uma categoria não suportada."}), 400
+    release_kinds = {"album", "ep", "single", "music_video", "compilation", "unknown"}
+    for option in selected_options:
+        kind = option.get("kind") or option.get("category")
+        if kind not in RELEASE_KINDS:
+            return jsonify({"success": False, "accepted": False, "error_code": "INVALID_RELEASE_METADATA", "message": "O item selecionado tem tipo de release inválido."}), 400
+        if kind in release_kinds and option.get("track_count") is None:
+            return jsonify({"success": False, "accepted": False, "error_code": "INCOMPLETE_RELEASE_METADATA", "message": "O item selecionado não informa a quantidade de faixas."}), 400
     
     # Enviar como está para o downloader (ele entende espaços, vírgulas, ranges, etc)
     if not downloader.write_input(sel):

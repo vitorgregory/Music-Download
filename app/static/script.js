@@ -69,7 +69,7 @@ function initializeSocketIO() {
         socket.on('selection_required', (data) => {
             console.log('Selection required event received:', data);
             if (data.options && Array.isArray(data.options)) {
-                openSelectionModal(data);
+                openArtistSelectionModal(data);
             }
         });
         
@@ -90,27 +90,33 @@ function initializeSocketIO() {
 let selectionOptions = [];
 let selectionSignature = "";
 let selectionState = {
-    status: 'closed',
-    requestId: null,
+    isOpen: false,
+    isSubmitting: false,
+    selectionId: null,
+    errorMessage: '',
+    acceptedSelectionId: null,
     openedBy: null,
     requestToken: 0
 };
 
-function openSelectionModal(data) {
+function openArtistSelectionModal(data) {
     const options = Array.isArray(data?.options) ? data.options : [];
     const requestId = data?.request_id || data?.selection_id || null;
-    if (requestId && requestId !== selectionState.requestId) {
+    if (requestId && requestId !== selectionState.selectionId) {
         resetSelectionState();
         selectionState.requestToken += 1;
     }
 
     const selArea = document.getElementById('selection-area');
     if (!selArea || !options.length) return;
-    if (requestId && requestId === selectionState.requestId && selectionState.status === 'submitting') return;
+    if (requestId && requestId === selectionState.acceptedSelectionId) return;
+    if (requestId && requestId === selectionState.selectionId && selectionState.isSubmitting) return;
 
-    const wasClosed = selectionState.status === 'closed';
-    selectionState.status = 'open';
-    selectionState.requestId = requestId;
+    const wasClosed = !selectionState.isOpen;
+    selectionState.isOpen = true;
+    selectionState.isSubmitting = false;
+    selectionState.errorMessage = '';
+    selectionState.selectionId = requestId;
     if (wasClosed) selectionState.openedBy = document.activeElement;
     selArea.classList.remove('d-none');
     selArea.setAttribute('aria-hidden', 'false');
@@ -119,12 +125,14 @@ function openSelectionModal(data) {
     document.getElementById('selection-search')?.focus();
 }
 
-function closeSelectionModal(reason = 'closed') {
+function closeArtistSelectionModal(reason = 'closed') {
     const selArea = document.getElementById('selection-area');
     if (!selArea) return;
     selectionState.requestToken += 1;
-    selectionState.status = 'closed';
-    selectionState.requestId = null;
+    if (reason === 'accepted') selectionState.acceptedSelectionId = selectionState.selectionId;
+    selectionState.isOpen = false;
+    selectionState.isSubmitting = false;
+    selectionState.errorMessage = '';
     selArea.classList.add('d-none');
     selArea.setAttribute('aria-hidden', 'true');
     selArea.setAttribute('aria-modal', 'false');
@@ -142,19 +150,19 @@ function resetSelectionState() {
     if (search) search.value = '';
 }
 
-function setSelectionSubmitting(value) {
-    selectionState.status = value ? 'submitting' : 'open';
+function setArtistSelectionSubmitting(value) {
+    selectionState.isSubmitting = !!value;
     const btn = document.getElementById('submit-selection');
     if (btn) btn.disabled = !!value || !document.querySelector('#selection-list input:checked');
     document.getElementById('skip-selection')?.toggleAttribute('disabled', !!value);
 }
 
 function renderSelectionError(message) {
-    selectionState.status = 'error';
+    selectionState.errorMessage = message || 'Erro ao enviar a seleção.';
     const btn = document.getElementById('submit-selection');
     if (btn) btn.disabled = !document.querySelector('#selection-list input:checked');
     document.getElementById('skip-selection')?.removeAttribute('disabled');
-    showToast(message || 'Erro ao enviar a seleção.', 'error');
+    showToast(selectionState.errorMessage, 'error');
 }
 
 function setupEventListeners() {
@@ -370,9 +378,9 @@ function updateDownloaderUI(d) {
     // Selection Modal
     const selArea = document.getElementById('selection-area');
     if (d.needs_selection) {
-        openSelectionModal({options: d.options, selection_id: d.selection_id || d.request_id});
-    } else if (selectionState.status !== 'submitting' && selectionState.status !== 'closed') {
-        closeSelectionModal('process-accepted');
+        openArtistSelectionModal({options: d.options, selection_id: d.selection_id || d.request_id});
+    } else if (selectionState.isOpen && !selectionState.isSubmitting) {
+        closeArtistSelectionModal('process-accepted');
     }
 
     // Logs
@@ -844,7 +852,7 @@ function renderSelectionList() {
 
 async function submitAlbumSelection(event) {
     event?.preventDefault();
-    if (selectionState.status === 'submitting') return;
+    if (selectionState.isSubmitting || !selectionState.isOpen) return;
     const checked = Array.from(document.querySelectorAll('#selection-list input:checked')).map(c=>c.value);
     if (!checked.length) {
         showToast('Selecione ao menos um item para continuar.', 'warning');
@@ -852,27 +860,31 @@ async function submitAlbumSelection(event) {
     }
 
     const requestToken = selectionState.requestToken;
-    setSelectionSubmitting(true);
+    setArtistSelectionSubmitting(true);
     try {
         const response = await axios.post('/submit_selection', new URLSearchParams({
             selection: checked.join(','),
-            selection_id: selectionState.requestId || ''
+            selection_id: selectionState.selectionId || ''
         }));
         const data = response?.data;
         if (!response?.status || response.status < 200 || response.status >= 300 || data?.success !== true || data?.accepted !== true) {
             throw new Error(data?.message || 'Seleção não aceita.');
         }
         if (requestToken !== selectionState.requestToken) return;
-        selectionState.status = 'success';
-        closeSelectionModal('accepted');
+        closeArtistSelectionModal('accepted');
+        await fetchState();
         showToast(data.message || 'Seleção adicionada à fila.', 'success');
     } catch (error) {
         if (requestToken !== selectionState.requestToken) return;
         renderSelectionError(error?.response?.data?.message || error.message);
     } finally {
-        if (requestToken === selectionState.requestToken && selectionState.status !== 'closed') setSelectionSubmitting(false);
+        if (requestToken === selectionState.requestToken && selectionState.isOpen) setArtistSelectionSubmitting(false);
     }
 }
+
+    const openSelectionModal = openArtistSelectionModal;
+    const closeSelectionModal = closeArtistSelectionModal;
+    const setSelectionSubmitting = setArtistSelectionSubmitting;
 
 function submitSelection(event) { return submitAlbumSelection(event); }
 
