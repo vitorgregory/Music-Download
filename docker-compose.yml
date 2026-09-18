@@ -2,6 +2,7 @@ services:
   music-download:
     image: ghcr.io/vitorgregory/music-download:latest
     platform: linux/amd64
+    container_name: music-download
     restart: unless-stopped
     ports:
       - "5000:5000"
