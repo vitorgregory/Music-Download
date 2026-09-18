@@ -1,10 +1,11 @@
 # Dockerfile para music-download
 # Usa a imagem oficial do wrapper como fonte do executável e do ambiente rootfs, conforme a estrutura validada em ghcr.io/itouakirai/wrapper:x86.
+# O wrapper distribuído é x86_64; esta imagem é publicada para o ZimaOS em amd64.
 FROM ghcr.io/itouakirai/wrapper:x86 AS wrapper
 
 FROM ubuntu:22.04 AS runtime
 
-ARG TARGETARCH=amd64
+ARG TARGETARCH
 ARG GO_VERSION=1.23.2
 ARG BENTO4_VERSION=1-6-0-641
 
@@ -21,6 +22,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH="/usr/local/go/bin:/app/bento4/bin:/app:${PATH}"
 
 WORKDIR /app
+
+# Evita gerar uma imagem arm64 incompatível com o wrapper x86 e o ZimaOS.
+RUN test "${TARGETARCH:-amd64}" = "amd64" \
+    || (echo "Este projeto suporta apenas linux/amd64; use --platform linux/amd64" >&2 && exit 1)
 
 # Dependências do sistema exigidas pela aplicação e pelos binários externos
 RUN apt-get update \
