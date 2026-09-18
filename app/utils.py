@@ -45,6 +45,7 @@ MEDIA_CATEGORY_LABELS = {
     "playlist": "Playlist",
     "song": "Música",
     "music_video": "Vídeo musical",
+    "live": "Álbum ao vivo",
     "unknown": "Tipo desconhecido",
 }
 
@@ -72,16 +73,22 @@ def _coerce_duration_seconds(value):
     return int(hours or 0) * 3600 + int(minutes) * 60 + int(seconds)
 
 
-def normalize_release_type(raw_type, track_count=None, total_duration_sec=None, album_type=None):
-    """Return the canonical release kind using structural metadata only."""
+def normalize_release_type(raw_type, track_count=None, total_duration_sec=None, album_type=None, name=None, is_live=False, is_concert=False):
+    """Return the canonical release kind using structural metadata and explicit flags."""
     raw_type = str(raw_type or "unknown")
     normalized_type = raw_type.lower().replace("_", "-").replace(" ", "-")
     album_type = str(album_type or "").lower().replace("_", "-").replace(" ", "-")
     count = _coerce_track_count(track_count)
     duration = _coerce_duration_seconds(total_duration_sec)
 
+    title = str(name or "").strip()
+    title_lower = title.lower()
     if normalized_type in {"music-video", "music-videos", "musicvideo"}:
         return "music_video"
+    if is_live or is_concert or normalized_type in {"live", "concert", "concerts"}:
+        return "live"
+    if re.search(r"\blive\b|\bconcert\b", title_lower):
+        return "live"
     if normalized_type in {"compilation", "compilations"} or album_type == "compilation":
         return "compilation"
     if normalized_type in {"playlist", "playlists"}:
@@ -89,11 +96,23 @@ def normalize_release_type(raw_type, track_count=None, total_duration_sec=None, 
     if normalized_type in {"song", "songs", "track", "tracks"}:
         return "song"
     if album_type in {"single", "ep", "album", "compilation"}:
+        if album_type == "album" and re.search(r"(?:-|\s)single$", title_lower):
+            return "single"
+        if album_type == "album" and re.search(r"(?:-|\s)ep$", title_lower):
+            return "ep"
         return album_type
     if normalized_type not in {"album", "albums"}:
+        if re.search(r"(?:-|\s)single$", title_lower):
+            return "single"
+        if re.search(r"(?:-|\s)ep$", title_lower):
+            return "ep"
         return "unknown"
     if count is None and duration is None:
-        return "unknown"
+        if re.search(r"(?:-|\s)single$", title_lower):
+            return "single"
+        if re.search(r"(?:-|\s)ep$", title_lower):
+            return "ep"
+        return "album"
     if (count is not None and count >= 7) or (duration is not None and duration >= 1800):
         return "album"
     if count is not None and 4 <= count <= 6 and (duration is None or duration < 1800):
@@ -113,7 +132,15 @@ def normalize_media_item(raw_item, endpoint_type=None):
     duration = attributes.get("totalDurationSec", attributes.get("total_duration_sec"))
     duration = attributes.get("duration", duration)
     album_type = attributes.get("albumType", attributes.get("album_type"))
-    category = normalize_release_type(raw_type, track_count, duration, album_type)
+    category = normalize_release_type(
+        raw_type,
+        track_count,
+        duration,
+        album_type,
+        name=attributes.get("name") or attributes.get("title") or raw_item.get("name"),
+        is_live=attributes.get("isLive") is True or attributes.get("live") is True,
+        is_concert=attributes.get("concert") is True,
+    )
     track_count = _coerce_track_count(track_count)
     duration_seconds = _coerce_duration_seconds(duration)
 
@@ -141,10 +168,11 @@ def normalize_media_item(raw_item, endpoint_type=None):
         "date": release_date,
         "artworkUrl": artwork_url or "",
         "isVideo": category == "music_video",
-        "isAudio": category in {"album", "single", "ep", "compilation", "playlist", "song"},
+        "isAudio": category in {"album", "single", "ep", "live", "compilation", "playlist", "song"},
         "selectable": bool(raw_item.get("id") or attributes.get("id")),
-        "track_count": track_count,
+        "track_count": track_count if track_count is not None else 0,
         "total_duration_sec": duration_seconds,
+        "duration_sec": int(duration_seconds) if duration_seconds is not None else None,
         "duration": duration or "",
         "rawType": raw_type,
         "raw_type": raw_type,

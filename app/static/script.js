@@ -370,7 +370,7 @@ function updateDownloaderUI(d) {
     // Selection Modal
     const selArea = document.getElementById('selection-area');
     if (d.needs_selection) {
-        openSelectionModal({options: d.options, request_id: d.request_id});
+        openSelectionModal({options: d.options, selection_id: d.selection_id || d.request_id});
     } else if (selectionState.status !== 'submitting' && selectionState.status !== 'closed') {
         closeSelectionModal('process-accepted');
     }
@@ -746,6 +746,18 @@ function truncatePath(p, len) {
     return '...' + p.slice(- (len - 3));
 }
 
+function formatDuration(seconds) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value < 0) return '—';
+    const total = Math.round(value);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const remainder = total % 60;
+    return hours > 0
+        ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+        : `${minutes}:${String(remainder).padStart(2, '0')}`;
+}
+
 const selectionCategoryLabels = {
     album: 'Álbum',
     single: 'Single',
@@ -754,6 +766,7 @@ const selectionCategoryLabels = {
     playlist: 'Playlist',
     song: 'Música',
     music_video: 'Vídeo musical',
+    live: 'Álbum ao vivo',
     unknown: 'Tipo desconhecido'
 };
 
@@ -799,7 +812,7 @@ function renderSelectionList() {
     list.innerHTML = filtered.map(o => {
         const category = o.kind || o.category || 'unknown';
         const categoryLabel = o.category_label || selectionCategoryLabels[category] || selectionCategoryLabels.unknown;
-        const badgeColor = category === 'music_video' ? 'bg-warning text-dark' : category === 'unknown' ? 'bg-secondary' : 'bg-primary';
+        const badgeColor = category === 'music_video' ? 'bg-warning text-dark' : category === 'live' ? 'bg-danger' : category === 'unknown' ? 'bg-secondary' : 'bg-primary';
         const selectable = o.selectable !== false;
         
         return `
@@ -813,13 +826,13 @@ function renderSelectionList() {
                     <div class="text-muted small">${o.extra || '—'}</div>
                 </label>
             </td>
-            <td data-label="Tipo"><span class="badge ${badgeColor}" title="Tipo original: ${o.rawType || o.type || 'unknown'}">${categoryLabel}</span></td>
+            <td data-label="Tipo"><span class="badge ${badgeColor}" title="Tipo original: ${o.rawType || o.type || 'unknown'}">${category === 'music_video' ? '<i class="fas fa-video me-1" aria-hidden="true"></i>' : category === 'live' ? '<i class="fas fa-tower-broadcast me-1" aria-hidden="true"></i>' : ''}${categoryLabel}</span></td>
             <td data-label="Edição">
                 ${(o.tags||[]).map(t=>`<span class="badge tag-pill me-1">${t}</span>`).join('') || '<span class="text-muted small">—</span>'}
                 ${o.track_count != null ? `<span class="text-muted small ms-1">${o.track_count} faixa(s)</span>` : ''}
             </td>
             <td data-label="Data" class="text-muted small">${o.date || '—'}</td>
-            <td data-label="Tempo" class="text-muted small">${o.duration || '—'}</td>
+            <td data-label="Tempo" class="text-muted small">${o.duration || (o.duration_sec != null ? formatDuration(o.duration_sec) : '—')}</td>
         </tr>`;
     }).join('');
 
@@ -863,16 +876,22 @@ async function submitAlbumSelection(event) {
 
 function submitSelection(event) { return submitAlbumSelection(event); }
 
-function skipSelection() {
+async function skipSelection(event) {
+    event?.preventDefault();
     const btn = document.getElementById('skip-selection');
     if(btn) btn.disabled = true;
-    
-    axios.post('/skip_selection')
-        .catch(err => {
-            console.error('Skip error:', err);
-            showToast('Erro ao pular a seleção.', 'error');
-        })
-        .finally(() => {
-            if(btn) btn.disabled = false;
-        });
+
+    try {
+        const response = await axios.post('/skip_selection');
+        const data = response?.data;
+        if (!response?.status || response.status < 200 || response.status >= 300 || data?.success !== true || data?.accepted !== true) {
+            throw new Error(data?.message || 'Não foi possível pular a seleção.');
+        }
+        closeSelectionModal('skipped');
+        showToast(data.message || 'Seleção ignorada.', 'info');
+    } catch (error) {
+        showToast(error?.response?.data?.message || error.message || 'Erro ao pular a seleção.', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }

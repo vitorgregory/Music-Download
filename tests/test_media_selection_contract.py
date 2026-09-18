@@ -13,7 +13,11 @@ def test_normalize_release_type_uses_track_count_and_duration():
     assert normalize_release_type("album", track_count=7, total_duration_sec=1500) == "album"
     assert normalize_release_type("album", track_count=3, total_duration_sec=1800) == "album"
     assert normalize_release_type("music-video", track_count=1, total_duration_sec=240) == "music_video"
-    assert normalize_release_type("album") == "unknown"
+    assert normalize_release_type("album", name="God's Gonna Cut You Down - Single") == "single"
+    assert normalize_release_type("album", name="Black Tape EP") == "ep"
+    assert normalize_release_type("album", name="Live in Paris") == "live"
+    assert normalize_release_type("album", is_live=True) == "live"
+    assert normalize_release_type("album") == "album"
 
 
 def test_normalize_media_categories_use_structural_fields():
@@ -34,6 +38,13 @@ def test_normalize_media_categories_use_structural_fields():
     assert album["isVideo"] is False
     assert video["category"] == "music_video"
     assert video["isVideo"] is True
+    live = normalize_media_item({
+        "id": "l1",
+        "type": "albums",
+        "attributes": {"name": "Live in Paris", "trackCount": 12},
+    })
+    assert live["kind"] == "live"
+    assert live["category_label"] == "Álbum ao vivo"
     assert unknown["category"] == "unknown"
     assert unknown["selectable"] is True
 
@@ -82,3 +93,20 @@ def test_submit_selection_rejects_stale_or_unknown_ids(monkeypatch):
     assert stale.get_json()["error_code"] == "STALE_SELECTION"
     assert unknown.status_code == 400
     assert unknown.get_json()["error_code"] == "INVALID_SELECTION"
+
+
+def test_skip_selection_returns_explicit_success_contract(monkeypatch):
+    downloader.needs_input = True
+    downloader.selection_id = "selection-skip"
+    monkeypatch.setattr(downloader, "close_stdin", lambda: True)
+
+    app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+    response = app.test_client().post("/skip_selection")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "success": True,
+        "accepted": True,
+        "selection_id": "selection-skip",
+        "message": "Seleção ignorada",
+    }

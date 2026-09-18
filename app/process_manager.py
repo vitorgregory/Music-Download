@@ -267,8 +267,8 @@ class DownloaderManager(ProcessManager):
             "options separated", "ranges supported"
         ]
         self.re_date = re.compile(r"\b(\d{4}([-/.]\d{2}([-/.]\d{2})?)?)\b")
-        self.re_duration = re.compile(r"\b(\d{1,2}:\d{2})\b")
-        self.re_track_count = re.compile(r"\b(\d{1,3})\s*(?:tracks?|faixas?)\b", re.IGNORECASE)
+        self.re_duration = re.compile(r"\b(\d{1,3}:\d{2}(?::\d{2})?)\b")
+        self.re_track_count = re.compile(r"\b(\d{1,3})\s*(?:tracks?|songs?|items?|faixas?)\b", re.IGNORECASE)
 
     def _split_table_row(self, clean):
         # Support unicode box drawing table separators (│)
@@ -289,6 +289,7 @@ class DownloaderManager(ProcessManager):
         label = columns[0]
         date = ""
         kind = ""
+        is_live = False
         duration = ""
         track_count = None
         extras = []
@@ -307,6 +308,9 @@ class DownloaderManager(ProcessManager):
             if not kind and any(t in col.lower() for t in ["album", "single", "ep", "compilation", "playlist", "song", "music video", "video"]):
                 kind = col.strip()
                 continue
+            if any(t in col.lower() for t in ["live", "concert"]):
+                is_live = True
+                continue
             extras.append(col.strip())
 
         normalized = normalize_media_item({
@@ -317,6 +321,7 @@ class DownloaderManager(ProcessManager):
                 "releaseDate": date,
                 "track_count": track_count,
                 "duration": duration,
+                "isLive": is_live,
             }
         })
         normalized["tags"] = analyze_label_metadata(label)["tags"]
@@ -490,6 +495,7 @@ class DownloaderManager(ProcessManager):
                             socketio.emit('selection_required', {
                                 'options': options,
                                 'options_count': len(options),
+                                'selection_id': self.selection_id,
                                 'request_id': self.selection_id
                             }, skip_sid=True)
                         except Exception as e:
@@ -511,6 +517,7 @@ class DownloaderManager(ProcessManager):
                             socketio.emit('selection_required', {
                                 'options': merged,
                                 'options_count': len(merged),
+                                'selection_id': self.selection_id,
                                 'request_id': self.selection_id
                             }, skip_sid=True)
                         except Exception as e:

@@ -405,8 +405,11 @@ def submit_selection():
 @app.route("/skip_selection", methods=["POST"])
 @limiter.exempt
 def skip_selection():
-    downloader.close_stdin()
-    return jsonify({"status": "ok"})
+    if not downloader.needs_input:
+        return jsonify({"success": False, "accepted": False, "error_code": "SELECTION_NOT_ACTIVE", "message": "Nenhuma seleção está aguardando confirmação."}), 409
+    if not downloader.close_stdin():
+        return jsonify({"success": False, "accepted": False, "error_code": "PROCESS_UNAVAILABLE", "message": "O downloader não aceitou a ação."}), 409
+    return jsonify({"success": True, "accepted": True, "selection_id": downloader.selection_id, "message": "Seleção ignorada"})
 
 # --- Configs ---
 

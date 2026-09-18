@@ -33,6 +33,17 @@ def test_parse_table_release_metadata():
     assert opts[0]["kind"] == "single"
 
 
+def test_parse_table_supports_songs_and_hours():
+    d = DownloaderManager()
+    opts = d._parse_options([
+        "| 1 | Live in Paris | 2024 | 7 songs | 1:02:03 | Live |"
+    ])
+
+    assert opts[0]["track_count"] == 7
+    assert opts[0]["duration_sec"] == 3723
+    assert opts[0]["kind"] == "live"
+
+
 def test_parse_list_options():
     d = DownloaderManager()
     opts = d._parse_options(SAMPLE_LIST)
