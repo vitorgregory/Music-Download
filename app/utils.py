@@ -37,6 +37,67 @@ def strip_ansi(text):
     return ansi_escape.sub('', text)
 
 
+MEDIA_CATEGORY_LABELS = {
+    "album": "Álbum",
+    "single": "Single",
+    "ep": "EP",
+    "compilation": "Compilação",
+    "playlist": "Playlist",
+    "song": "Música",
+    "music_video": "Vídeo musical",
+    "unknown": "Tipo desconhecido",
+}
+
+
+def normalize_media_item(raw_item, endpoint_type=None):
+    """Normalize an Apple Music resource without guessing from its title."""
+    raw_item = raw_item if isinstance(raw_item, dict) else {}
+    attributes = raw_item.get("attributes") if isinstance(raw_item.get("attributes"), dict) else raw_item
+    raw_type = raw_item.get("type") or endpoint_type or attributes.get("type") or "unknown"
+    raw_type = str(raw_type)
+    normalized_type = raw_type.lower().replace("_", "-").replace(" ", "-")
+    album_type = str(attributes.get("albumType") or attributes.get("album_type") or "").lower()
+
+    if normalized_type in {"music-videos", "music-video", "musicvideo"} or endpoint_type in {"music-videos", "music_video"}:
+        category = "music_video"
+    elif normalized_type in {"albums", "album"}:
+        category = {"single": "single", "ep": "ep", "compilation": "compilation"}.get(album_type, "album")
+    elif normalized_type in {"playlists", "playlist"}:
+        category = "playlist"
+    elif normalized_type in {"songs", "song", "tracks", "track"}:
+        category = "song"
+    else:
+        category = "unknown"
+
+    artwork = attributes.get("artwork")
+    artwork_url = artwork.get("url") if isinstance(artwork, dict) else attributes.get("artworkUrl")
+    if artwork_url and "{w}" in artwork_url:
+        artwork_url = artwork_url.replace("{w}", "300").replace("{h}", "300")
+
+    genres = attributes.get("genreNames")
+    subtitle = attributes.get("description") or (genres[0] if isinstance(genres, list) and genres else "")
+    title = attributes.get("name") or attributes.get("title") or raw_item.get("name") or ""
+    release_date = attributes.get("releaseDate") or attributes.get("release_date") or ""
+    return {
+        "id": str(raw_item.get("id") or attributes.get("id") or ""),
+        "type": category,
+        "category": category,
+        "category_label": MEDIA_CATEGORY_LABELS[category],
+        "title": title,
+        "label": title,
+        "subtitle": subtitle,
+        "artist": attributes.get("artistName") or attributes.get("artist_name") or "",
+        "extra": attributes.get("artistName") or attributes.get("artist_name") or "",
+        "releaseDate": release_date,
+        "date": release_date,
+        "artworkUrl": artwork_url or "",
+        "isVideo": category == "music_video",
+        "isAudio": category in {"album", "single", "ep", "compilation", "playlist", "song"},
+        "selectable": category != "unknown",
+        "rawType": raw_type,
+        "raw_type": raw_type,
+    }
+
 def is_valid_apple_music_url(url: str) -> bool:
     """Basic validation: scheme http(s) and host contains music.apple.com"""
     try:
@@ -100,22 +161,9 @@ def analyze_label_metadata(raw_label):
     release_type = "Album" # Padrão
     tags = []
 
-    # Detecta Music Video (Geralmente tem "Video" ou "Clip" no nome ou metadados)
-    if re.search(r'\b(Video|Music Video)\b', clean_label, re.IGNORECASE):
-        release_type = "Music Video"
-        clean_label = re.sub(r'[\(\[\-]\s*(Music\s*)?Video\s*[\)\]]?', '', clean_label, flags=re.IGNORECASE)
-        clean_label = re.sub(r'\s-\s*(Music\s*)?Video$', '', clean_label, flags=re.IGNORECASE)
+    release_type = "Unknown"
 
-    # Detecta Single
-    elif re.search(r'\b(Single)\b', clean_label, re.IGNORECASE):
-        release_type = "Single"
-        clean_label = re.sub(r'[\(\[\-]\s*Single\s*[\)\]]?', '', clean_label, flags=re.IGNORECASE)
-        clean_label = re.sub(r'\s-\s*Single$', '', clean_label, flags=re.IGNORECASE)
 
-    # Detecta EP
-    elif re.search(r'\b(EP)\b', clean_label, re.IGNORECASE):
-        release_type = "EP"
-        clean_label = re.sub(r'\s-\s*EP$', '', clean_label, flags=re.IGNORECASE)
 
     # Detecta Tags Extras (Edições)
     if re.search(r'Deluxe', clean_label, re.IGNORECASE): tags.append("Deluxe")

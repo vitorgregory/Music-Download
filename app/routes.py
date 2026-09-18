@@ -12,6 +12,7 @@ import time
 import shutil
 import threading
 import tempfile
+import re
 from flask import current_app
 
 def get_cred_path(): 
@@ -161,7 +162,8 @@ def get_state():
             "running": d_status["running"],
             "logs": d_status["logs"],
             "needs_selection": d_status["needs_input"],
-            "options": d_status["options"]
+            "options": d_status["options"],
+            "request_id": d_status.get("request_id")
         },
         "downloader_last_output": d_status.get('last_output_at'),
         "downloader_stalled": (True if (d_status.get('last_output_at') and (time.time() - d_status.get('last_output_at', 0) > STALL_TIMEOUT_SECONDS)) else False),
@@ -351,17 +353,52 @@ def submit_2fa():
 @limiter.exempt
 def submit_selection():
     sel = (request.form.get("selection") or "").strip()
+    request_id = (request.form.get("selection_id") or request.form.get("request_id") or "").strip()
     if not sel:
-        return jsonify({"status": "error", "message": "Seleção inválida."}), 400
+        return jsonify({"success": False, "accepted": False, "error_code": "INVALID_SELECTION", "message": "Seleção inválida."}), 400
     
     # Suportar múltiplas seleções separadas por espaço, vírgula ou hífen (ex: "1 2 3" ou "1,2,3" ou "1-3")
     # Validar que contém apenas números, espaços, vírgulas e hífens
     if not all(c.isdigit() or c in ' ,-' for c in sel):
-        return jsonify({"status": "error", "message": "Seleção inválida - use números separados por espaço, vírgula ou hífen."}), 400
+        return jsonify({"success": False, "accepted": False, "error_code": "INVALID_SELECTION", "message": "Seleção inválida - use números separados por espaço, vírgula ou hífen."}), 400
+
+    if not downloader.needs_input:
+        return jsonify({"success": False, "accepted": False, "error_code": "SELECTION_NOT_ACTIVE", "message": "Nenhuma seleção está aguardando confirmação."}), 409
+    if request_id and request_id != downloader.selection_id:
+        return jsonify({"success": False, "accepted": False, "error_code": "STALE_SELECTION", "message": "Essa seleção já não está ativa."}), 409
+
+    available = {str(option.get("id")): option for option in downloader.input_options}
+    selected_ids = []
+    for token in re.split(r"[ ,]+", sel):
+        if not token:
+            continue
+        if "-" in token:
+            start, end = token.split("-", 1)
+            if not start.isdigit() or not end.isdigit() or int(start) > int(end):
+                return jsonify({"success": False, "accepted": False, "error_code": "INVALID_SELECTION", "message": "Intervalo de seleção inválido."}), 400
+            selected_ids.extend(str(index) for index in range(int(start), int(end) + 1))
+        elif token.isdigit():
+            selected_ids.append(str(int(token)))
+        else:
+            return jsonify({"success": False, "accepted": False, "error_code": "INVALID_SELECTION", "message": "Seleção inválida."}), 400
+
+    if not selected_ids or len(selected_ids) != len(set(selected_ids)):
+        return jsonify({"success": False, "accepted": False, "error_code": "INVALID_SELECTION", "message": "Itens duplicados ou seleção vazia."}), 400
+    if any(item_id not in available for item_id in selected_ids):
+        return jsonify({"success": False, "accepted": False, "error_code": "INVALID_SELECTION", "message": "Um ou mais itens não pertencem à seleção atual."}), 400
+    if any(available[item_id].get("selectable") is not True for item_id in selected_ids):
+        return jsonify({"success": False, "accepted": False, "error_code": "UNSUPPORTED_CATEGORY", "message": "A seleção contém uma categoria não suportada."}), 400
     
     # Enviar como está para o downloader (ele entende espaços, vírgulas, ranges, etc)
-    downloader.write_input(sel)
-    return jsonify({"status": "ok"})
+    if not downloader.write_input(sel):
+        return jsonify({"success": False, "accepted": False, "error_code": "PROCESS_UNAVAILABLE", "message": "O downloader não aceitou a seleção."}), 409
+    return jsonify({
+        "success": True,
+        "accepted": True,
+        "request_id": downloader.selection_id,
+        "task_ids": [],
+        "message": "Seleção adicionada à fila"
+    })
 
 @app.route("/skip_selection", methods=["POST"])
 @limiter.exempt

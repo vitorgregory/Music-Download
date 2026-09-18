@@ -7,7 +7,7 @@ import platform
 import signal
 from pathlib import Path
 from collections import deque
-from .utils import strip_ansi, analyze_label_metadata, generate_m3u_playlist, fetch_metadata
+from .utils import strip_ansi, analyze_label_metadata, generate_m3u_playlist, fetch_metadata, normalize_media_item
 
 APP_ROOT = Path(__file__).resolve().parent.parent
 
@@ -59,6 +59,7 @@ class ProcessManager:
         self.logs = deque(maxlen=300)
         self.needs_input = False
         self.input_options = []
+        self.selection_id = None
         self._lock = threading.Lock()
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -134,6 +135,7 @@ class ProcessManager:
                 "logs": list(self.logs),
                 "needs_input": self.needs_input,
                 "options": self.input_options,
+                "request_id": self.selection_id,
                 "last_output_at": getattr(self, 'last_output_at', None)
             }
 
@@ -295,23 +297,20 @@ class DownloaderManager(ProcessManager):
             if not duration and self.re_duration.search(col):
                 duration = col.strip()
                 continue
-            if not kind and any(t in col.lower() for t in ["album", "single", "ep", "video"]):
+            if not kind and any(t in col.lower() for t in ["album", "single", "ep", "compilation", "playlist", "song", "music video", "video"]):
                 kind = col.strip()
                 continue
             extras.append(col.strip())
 
-        meta = analyze_label_metadata(label)
-        if kind:
-            meta["type"] = kind
-        return {
+        normalized = normalize_media_item({
             "id": entry_id,
-            "label": meta["label"],
-            "type": meta["type"],
-            "tags": meta["tags"],
-            "date": date,
-            "duration": duration,
-            "extra": ", ".join([e for e in extras if e])
-        }
+            "type": kind or "unknown",
+            "attributes": {"name": label, "releaseDate": date}
+        })
+        normalized["tags"] = analyze_label_metadata(label)["tags"]
+        normalized["duration"] = duration
+        normalized["extra"] = ", ".join([e for e in extras if e])
+        return normalized
 
     def start(self, link, args=None):
         if self.running: return False
@@ -369,6 +368,7 @@ class DownloaderManager(ProcessManager):
                 self.running = True
                 self.needs_input = False
                 self.input_options = []
+                self.selection_id = None
                 self.logs.clear()
                 self.logs.append(f"Iniciando: {link}")
             threading.Thread(target=self._stream_logs, daemon=True).start()
@@ -400,11 +400,15 @@ class DownloaderManager(ProcessManager):
             # Tenta Lista
             m = self.re_list.search(clean)
             if m:
-                meta = analyze_label_metadata(m.group(2).strip())
-                options.insert(0, {
-                    "id": m.group(1), "label": meta['label'], "type": meta['type'],
-                    "tags": meta['tags'], "date": "", "duration": "", "extra": ""
+                label = m.group(2).strip()
+                normalized = normalize_media_item({
+                    "id": m.group(1),
+                    "type": "unknown",
+                    "attributes": {"name": label}
                 })
+                normalized["tags"] = analyze_label_metadata(label)["tags"]
+                normalized["duration"] = ""
+                options.insert(0, normalized)
         return options
 
     def _merge_options(self, candidates):
@@ -461,6 +465,7 @@ class DownloaderManager(ProcessManager):
                 if any(k in clean_line for k in self.selection_keywords):
                     with self._lock:
                         self.needs_input = True
+                        self.selection_id = self.selection_id or f"selection-{int(time.time() * 1000)}"
                     
                     # Try to parse options immediately
                     options = self._parse_options(log_buffer)
@@ -473,7 +478,8 @@ class DownloaderManager(ProcessManager):
                             from . import socketio
                             socketio.emit('selection_required', {
                                 'options': options,
-                                'options_count': len(options)
+                                'options_count': len(options),
+                                'request_id': self.selection_id
                             }, skip_sid=True)
                         except Exception as e:
                             self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")
@@ -493,7 +499,8 @@ class DownloaderManager(ProcessManager):
                             from . import socketio
                             socketio.emit('selection_required', {
                                 'options': merged,
-                                'options_count': len(merged)
+                                'options_count': len(merged),
+                                'request_id': self.selection_id
                             }, skip_sid=True)
                         except Exception as e:
                             self._log(f"Aviso: Falha ao emitir evento Socket.IO: {e}")

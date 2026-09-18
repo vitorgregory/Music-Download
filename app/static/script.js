@@ -69,16 +69,7 @@ function initializeSocketIO() {
         socket.on('selection_required', (data) => {
             console.log('Selection required event received:', data);
             if (data.options && Array.isArray(data.options)) {
-                // Sync the options with frontend
-                syncSelectionOptions(data.options);
-                // Show the selection area
-                const selArea = document.getElementById('selection-area');
-                if (selArea) {
-                    selArea.classList.remove('d-none');
-                    // Auto-focus search if available
-                    const searchBox = document.getElementById('selection-search');
-                    if (searchBox) setTimeout(() => searchBox.focus(), 100);
-                }
+                openSelectionModal(data);
             }
         });
         
@@ -98,13 +89,80 @@ function initializeSocketIO() {
 
 let selectionOptions = [];
 let selectionSignature = "";
+let selectionState = {
+    status: 'closed',
+    requestId: null,
+    openedBy: null,
+    requestToken: 0
+};
+
+function openSelectionModal(data) {
+    const options = Array.isArray(data?.options) ? data.options : [];
+    const requestId = data?.request_id || data?.selection_id || null;
+    if (requestId && requestId !== selectionState.requestId) {
+        resetSelectionState();
+        selectionState.requestToken += 1;
+    }
+
+    const selArea = document.getElementById('selection-area');
+    if (!selArea || !options.length) return;
+    if (requestId && requestId === selectionState.requestId && selectionState.status === 'submitting') return;
+
+    const wasClosed = selectionState.status === 'closed';
+    selectionState.status = 'open';
+    selectionState.requestId = requestId;
+    if (wasClosed) selectionState.openedBy = document.activeElement;
+    selArea.classList.remove('d-none');
+    selArea.setAttribute('aria-hidden', 'false');
+    selArea.setAttribute('aria-modal', 'true');
+    syncSelectionOptions(options);
+    document.getElementById('selection-search')?.focus();
+}
+
+function closeSelectionModal(reason = 'closed') {
+    const selArea = document.getElementById('selection-area');
+    if (!selArea) return;
+    selectionState.requestToken += 1;
+    selectionState.status = 'closed';
+    selectionState.requestId = null;
+    selArea.classList.add('d-none');
+    selArea.setAttribute('aria-hidden', 'true');
+    selArea.setAttribute('aria-modal', 'false');
+    if (reason !== 'submitting') resetSelectionState();
+    const opener = selectionState.openedBy;
+    selectionState.openedBy = null;
+    if (opener && typeof opener.focus === 'function' && document.contains(opener)) opener.focus();
+}
+
+function resetSelectionState() {
+    selectionOptions = [];
+    selectionSignature = "";
+    document.getElementById('selection-list')?.replaceChildren();
+    const search = document.getElementById('selection-search');
+    if (search) search.value = '';
+}
+
+function setSelectionSubmitting(value) {
+    selectionState.status = value ? 'submitting' : 'open';
+    const btn = document.getElementById('submit-selection');
+    if (btn) btn.disabled = !!value || !document.querySelector('#selection-list input:checked');
+    document.getElementById('skip-selection')?.toggleAttribute('disabled', !!value);
+}
+
+function renderSelectionError(message) {
+    selectionState.status = 'error';
+    const btn = document.getElementById('submit-selection');
+    if (btn) btn.disabled = !document.querySelector('#selection-list input:checked');
+    document.getElementById('skip-selection')?.removeAttribute('disabled');
+    showToast(message || 'Erro ao enviar a seleção.', 'error');
+}
 
 function setupEventListeners() {
     const clickParams = [
         ['analyze-btn', analyzeLink],
         ['download-btn', addToQueue],
         ['pause-btn', togglePause],
-        ['submit-selection', submitSelection],
+        ['submit-selection', submitAlbumSelection],
         ['submit-2fa', submit2FA],
         ['cancel-2fa', stopWrapper],
         ['submit-login', submitLogin],
@@ -160,7 +218,7 @@ function setupEventListeners() {
     const searchBox = document.getElementById('selection-search');
     if (searchBox) {
         searchBox.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Enter') { ev.preventDefault(); submitSelection(); }
+            if (ev.key === 'Enter') { submitAlbumSelection(ev); }
         });
     }
 }
@@ -312,10 +370,9 @@ function updateDownloaderUI(d) {
     // Selection Modal
     const selArea = document.getElementById('selection-area');
     if (d.needs_selection) {
-        selArea.classList.remove('d-none');
-        syncSelectionOptions(d.options);
-    } else {
-        selArea.classList.add('d-none');
+        openSelectionModal({options: d.options, request_id: d.request_id});
+    } else if (selectionState.status !== 'submitting' && selectionState.status !== 'closed') {
+        closeSelectionModal('process-accepted');
     }
 
     // Logs
@@ -656,7 +713,7 @@ function updateSelectionFilters(opts) {
         
         // Extrair tipos
         if (opt.type) {
-            types.add(opt.type);
+            types.add(opt.category || opt.type);
         }
     });
 
@@ -675,7 +732,7 @@ function updateSelectionFilters(opts) {
     // Atualizar filtro de tipos (se existir o elemento)
     if (typeFilter) {
         typeFilter.innerHTML = '<option value="">Todos os tipos</option>' +
-            Array.from(types).sort().map(type => `<option value="${type}">${type}</option>`).join('');
+            Array.from(types).sort().map(type => `<option value="${type}">${selectionCategoryLabels[type] || selectionCategoryLabels.unknown}</option>`).join('');
         if (currentType) typeFilter.value = currentType;
     }
 
@@ -688,6 +745,17 @@ function truncatePath(p, len) {
     if (p.length <= (len || 60)) return p;
     return '...' + p.slice(- (len - 3));
 }
+
+const selectionCategoryLabels = {
+    album: 'Álbum',
+    single: 'Single',
+    ep: 'EP',
+    compilation: 'Compilação',
+    playlist: 'Playlist',
+    song: 'Música',
+    music_video: 'Vídeo musical',
+    unknown: 'Tipo desconhecido'
+};
 
 function renderSelectionList() {
     const list = document.getElementById('selection-list');
@@ -729,16 +797,15 @@ function renderSelectionList() {
     }
 
     list.innerHTML = filtered.map(o => {
-        let badgeColor = 'bg-secondary';
-        if (o.type === 'Album') badgeColor = 'bg-primary';
-        if (o.type === 'Single') badgeColor = 'bg-info text-dark';
-        if (o.type === 'EP') badgeColor = 'bg-success';
-        if (o.type === 'MusicVideo' || o.type === 'Video' || o.type === 'MUSIC_VIDEO') badgeColor = 'bg-warning text-dark';
+        const category = o.category || 'unknown';
+        const categoryLabel = o.category_label || selectionCategoryLabels[category] || selectionCategoryLabels.unknown;
+        const badgeColor = category === 'music_video' ? 'bg-warning text-dark' : category === 'unknown' ? 'bg-secondary' : 'bg-primary';
+        const selectable = o.selectable !== false;
         
         return `
         <tr class="selection-row">
             <td data-label="">
-                <input class="form-check-input" type="checkbox" value="${o.id}" id="chk-${o.id}" aria-label="Selecionar ${o.label}">
+                <input class="form-check-input" type="checkbox" value="${o.id}" id="chk-${o.id}" aria-label="Selecionar ${o.label}" ${selectable ? '' : 'disabled'}>
             </td>
             <td data-label="Título">
                 <label class="form-check-label selection-label" for="chk-${o.id}">
@@ -746,7 +813,7 @@ function renderSelectionList() {
                     <div class="text-muted small">${o.extra || '—'}</div>
                 </label>
             </td>
-            <td data-label="Tipo"><span class="badge ${badgeColor}">${o.type}</span></td>
+            <td data-label="Tipo"><span class="badge ${badgeColor}" title="Tipo original: ${o.rawType || o.type || 'unknown'}">${categoryLabel}</span></td>
             <td data-label="Edição">
                 ${(o.tags||[]).map(t=>`<span class="badge tag-pill me-1">${t}</span>`).join('') || '<span class="text-muted small">—</span>'}
             </td>
@@ -761,33 +828,39 @@ function renderSelectionList() {
     updateSelectionCount();
 }
 
-function submitSelection() {
+async function submitAlbumSelection(event) {
+    event?.preventDefault();
+    if (selectionState.status === 'submitting') return;
     const checked = Array.from(document.querySelectorAll('#selection-list input:checked')).map(c=>c.value);
-    if(checked.length) {
-        // Desabilitar botão e esconder modal para evitar múltiplos cliques/reenviios
-        const btn = document.getElementById('submit-selection');
-        const selArea = document.getElementById('selection-area');
-        if(btn) btn.disabled = true;
-        if(selArea) selArea.classList.add('d-none');
-        
-        // Enviar TODAS as seleções de uma vez, separadas por VÍRGULA
-        // Formato esperado pelo CLI: "1,2,3,4" ou "1,3,5" para múltiplas seleções
-        const selectionString = checked.join(',');
-        
-        showToast(`${checked.length} item(ns) enviados para download.`, 'success');
-
-        axios.post('/submit_selection', new URLSearchParams({selection: selectionString}))
-            .catch(err => {
-                console.error('Selection error:', err);
-                showToast('Erro ao enviar a seleção.', 'error');
-            })
-            .finally(() => {
-                if(btn) btn.disabled = false;
-            });
-    } else {
+    if (!checked.length) {
         showToast('Selecione ao menos um item para continuar.', 'warning');
+        return;
+    }
+
+    const requestToken = selectionState.requestToken;
+    setSelectionSubmitting(true);
+    try {
+        const response = await axios.post('/submit_selection', new URLSearchParams({
+            selection: checked.join(','),
+            selection_id: selectionState.requestId || ''
+        }));
+        const data = response?.data;
+        if (!response?.status || response.status < 200 || response.status >= 300 || data?.success !== true || data?.accepted !== true) {
+            throw new Error(data?.message || 'Seleção não aceita.');
+        }
+        if (requestToken !== selectionState.requestToken) return;
+        selectionState.status = 'success';
+        closeSelectionModal('accepted');
+        showToast(data.message || 'Seleção adicionada à fila.', 'success');
+    } catch (error) {
+        if (requestToken !== selectionState.requestToken) return;
+        renderSelectionError(error?.response?.data?.message || error.message);
+    } finally {
+        if (requestToken === selectionState.requestToken && selectionState.status !== 'closed') setSelectionSubmitting(false);
     }
 }
+
+function submitSelection(event) { return submitAlbumSelection(event); }
 
 function skipSelection() {
     const btn = document.getElementById('skip-selection');
