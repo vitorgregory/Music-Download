@@ -11,6 +11,7 @@ services:
       - /DATA/AppData/music-download/downloads:/app/downloads
       - /DATA/AppData/music-download/config:/app/config
       - /DATA/AppData/music-download/config/config.yaml:/app/apple-music-downloader/config.yaml
+      - /DATA/AppData/music-download/wrapper-lite:/app/wrapper-lite-data
     environment:
       PYTHONUNBUFFERED: "1"
       FLASK_DEBUG: "0"
@@ -18,6 +19,7 @@ services:
       WRAPPER_BIN: "/app/wrapper"
       WRAPPER_ROOTFS: "/app/rootfs"
       WRAPPER_CACHE_DIR: "/app/config/wrapper"
+      WRAPPER_LITE_2FA_FILE: "/app/wrapper-lite-data/2fa.txt"
       STALL_TIMEOUT_SECONDS: "300"
       MAX_RETRIES: "3"
       RETRY_BASE_SECONDS: "5"
@@ -40,6 +42,7 @@ services:
     container_name: music-download-wrapper-lite
     platform: linux/amd64
     restart: unless-stopped
+    privileged: true
     env_file:
       - .env
     volumes:

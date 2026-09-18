@@ -106,6 +106,7 @@ function setupEventListeners() {
         ['pause-btn', togglePause],
         ['submit-selection', submitSelection],
         ['submit-2fa', submit2FA],
+        ['cancel-2fa', stopWrapper],
         ['submit-login', submitLogin],
         ['stop-wrapper-btn', stopWrapper],
         ['nav-login-btn', () => { // <--- NOVO
@@ -297,13 +298,14 @@ function updateWrapperUI(w) {
 
     document.getElementById('login-btn')?.classList.toggle('d-none', w.running);
     document.getElementById('stop-wrapper-btn')?.classList.toggle('d-none', !w.running);
-    document.getElementById('twofa-modal')?.classList.toggle('d-none', !w.needs_2fa);
+    const needsTwofa = !!w.running && !!w.needs_2fa;
+    document.getElementById('twofa-modal')?.classList.toggle('d-none', !needsTwofa);
 
     // Foco automático no campo 2FA quando o modal abre
-    if (w.needs_2fa && !lastTwofaVisible) {
+    if (needsTwofa && !lastTwofaVisible) {
         setTimeout(() => document.getElementById('twofa-code')?.focus(), 120);
     }
-    lastTwofaVisible = !!w.needs_2fa;
+    lastTwofaVisible = needsTwofa;
 }
 
 function updateDownloaderUI(d) {

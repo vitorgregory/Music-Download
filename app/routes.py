@@ -11,6 +11,7 @@ import json
 import time
 import shutil
 import threading
+import tempfile
 from flask import current_app
 
 def get_cred_path(): 
@@ -66,6 +67,32 @@ def clear_2fa_cache():
         if os.path.exists(get_2fa_cache_path()):
             os.remove(get_2fa_cache_path())
     except: pass
+
+
+def get_wrapper_lite_2fa_path():
+    configured = os.environ.get("WRAPPER_LITE_2FA_FILE", "/app/wrapper-lite-data/2fa.txt")
+    return Path(configured)
+
+
+def save_wrapper_lite_2fa(code):
+    target = get_wrapper_lite_2fa_path()
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="ascii", dir=target.parent, delete=False
+        ) as handle:
+            handle.write(f"{code}\n")
+            temporary_path = Path(handle.name)
+        os.chmod(temporary_path, 0o600)
+        os.replace(temporary_path, target)
+        return True
+    except OSError:
+        try:
+            if "temporary_path" in locals():
+                temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
 
 
 def submit_cached_2fa_if_needed():
@@ -309,11 +336,16 @@ def submit_2fa():
     if not code.isdigit() or len(code) != 6:
         return jsonify({"status": "error", "message": "Código 2FA inválido."}), 400
     save_2fa_cache(code)
+    lite_saved = save_wrapper_lite_2fa(code)
     if wrapper.process and wrapper.process.poll() is None:
         if wrapper.write_input(code):
-            return jsonify({"status": "ok"})
+            return jsonify({"status": "ok", "wrapper_lite_saved": lite_saved})
+        if lite_saved:
+            return jsonify({"status": "ok", "wrapper_lite_saved": True})
         return jsonify({"status": "error", "message": "Wrapper não aceitou o código."}), 409
-    return jsonify({"status": "error", "message": "Wrapper não está aguardando o código."}), 409
+    if lite_saved:
+        return jsonify({"status": "ok", "wrapper_lite_saved": True})
+    return jsonify({"status": "error", "message": "Não foi possível salvar o código 2FA."}), 500
 
 @app.route("/submit_selection", methods=["POST"])
 @limiter.exempt

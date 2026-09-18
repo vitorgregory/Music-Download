@@ -88,6 +88,26 @@ def test_wrapper_detects_2fa_flag_from_credential_handler():
     assert wrapper.needs_2fa is True
 
 
+def test_wrapper_clears_2fa_when_process_exits():
+    class FakeStdout:
+        def readline(self):
+            return ''
+
+    class FakeProcess:
+        stdout = FakeStdout()
+
+        def poll(self):
+            return 1
+
+    wrapper = WrapperManager()
+    wrapper.process = FakeProcess()
+    wrapper.needs_2fa = True
+
+    wrapper._stream_logs()
+
+    assert wrapper.needs_2fa is False
+
+
 def test_downloader_detects_alternative_selection_prompt():
     class FakeStdout:
         def __init__(self, lines):
@@ -118,6 +138,39 @@ def test_downloader_detects_alternative_selection_prompt():
     assert downloader.needs_input is True
     assert len(downloader.input_options) >= 2
     assert downloader.input_options[0]['id'] == '1'
+
+
+def test_downloader_closes_stdin_on_retry_prompt():
+    class FakeStdout:
+        def __init__(self, lines):
+            self._lines = iter(lines)
+
+        def readline(self):
+            return next(self._lines, '')
+
+    class FakeStdin:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = FakeStdout(['Error detected, press Enter to try again...', ''])
+            self.stdin = FakeStdin()
+            self._poll = None
+
+        def poll(self):
+            return self._poll
+
+    downloader = DownloaderManager()
+    downloader.process = FakeProcess()
+    downloader.running = True
+
+    downloader._stream_logs()
+
+    assert downloader.process.stdin.closed is True
 
 
 def test_wrapper_paths_use_environment(monkeypatch, tmp_path):

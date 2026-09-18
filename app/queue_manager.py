@@ -267,7 +267,10 @@ def queue_worker():
             
             while True:
                 # Check if process still running
-                if not downloader.process or downloader.process.poll() is not None:
+                process = getattr(downloader, "process", None)
+                if process is not None and process.poll() is not None:
+                    break
+                if process is None and not getattr(downloader, "running", False):
                     # Process exited!
                     break
                 
@@ -315,7 +318,8 @@ def queue_worker():
                 continue
             
             # Get final exit code
-            exit_code = downloader.process.returncode if downloader.process else -1
+            process = getattr(downloader, "process", None)
+            exit_code = process.returncode if process is not None else (0 if not getattr(downloader, "running", False) else -1)
             print(f"[QUEUE] Task #{current_id}: Exit code = {exit_code}")
             
             # SUCCESS if exit code is 0
@@ -338,6 +342,10 @@ def queue_worker():
             
             # FAILURE: Analyze error
             error_msg = find_error_in_logs(downloader.logs)
+            recent_logs = list(downloader.logs)[-12:]
+            print(f"[QUEUE] Task #{current_id}: Last downloader output:")
+            for recent_line in recent_logs:
+                print(f"[DOWNLOADER] {recent_line}")
             print(f"[QUEUE] Task #{current_id}: FAILED - {error_msg}")
             _handle_failure(current_id, error_msg)
             

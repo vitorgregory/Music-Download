@@ -244,6 +244,8 @@ class WrapperManager(ProcessManager):
         finally:
             with self._lock:
                 self.running = False
+                if self.process is None or self.process.poll() is not None:
+                    self.needs_2fa = False
 
 class DownloaderManager(ProcessManager):
     def __init__(self):
@@ -444,6 +446,16 @@ class DownloaderManager(ProcessManager):
                 self._log(line)
                 log_buffer.append(line)
                 clean_line = strip_ansi(line).lower()
+
+                if any(marker in clean_line for marker in [
+                    "error detected, press enter",
+                    "press enter to try again",
+                    "failed to run v4:",
+                    "key retrieval failed",
+                    "invalid ckc"
+                ]):
+                    self._log(">>> ERRO DETECTADO, encerrando entrada interativa <<<")
+                    self.close_stdin()
 
                 # Detecção de Input
                 if any(k in clean_line for k in self.selection_keywords):
