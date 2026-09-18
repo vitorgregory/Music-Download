@@ -155,6 +155,9 @@ class WrapperManager(ProcessManager):
         if not lower:
             return False
 
+        if re.search(r"\b2fa\s*:\s*(true|yes|requested|required)\b", lower):
+            return True
+
         has_2fa_signal = any(token in lower for token in [
             "2fa", "otp", "one-time", "verification code", "authentication code",
             "enter the code", "verify code", "security code"

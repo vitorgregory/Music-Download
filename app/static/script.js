@@ -578,7 +578,7 @@ function submitLogin() {
     document.getElementById('login-form').classList.add('d-none');
     showToast('Conectando ao wrapper…', 'info');
 }
-function submit2FA() {
+async function submit2FA() {
     const input = document.getElementById('twofa-code');
     const code = input.value.trim();
     if (code.length < 6) {
@@ -587,10 +587,15 @@ function submit2FA() {
         showToast('Digite os 6 dígitos do código.', 'warning');
         return;
     }
-    axios.post('/submit_2fa', new URLSearchParams({twofa_code: code}));
-    document.getElementById('twofa-modal').classList.add('d-none');
-    input.value = '';
-    showToast('Código enviado.', 'success');
+    try {
+        await axios.post('/submit_2fa', new URLSearchParams({twofa_code: code}));
+        document.getElementById('twofa-modal').classList.add('d-none');
+        input.value = '';
+        showToast('Código enviado.', 'success');
+    } catch (error) {
+        showToast(error.response?.data?.message || 'Não foi possível enviar o código.', 'error');
+        input.focus();
+    }
 }
 
 // Marca/desmarca todos os itens visíveis do modal de seleção (apenas UI)

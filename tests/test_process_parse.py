@@ -60,6 +60,34 @@ def test_wrapper_detects_2fa_prompt_variants():
     assert wrapper.needs_2fa is True
 
 
+def test_wrapper_detects_2fa_flag_from_credential_handler():
+    class FakeStdout:
+        def __init__(self, lines):
+            self._lines = iter(lines)
+
+        def readline(self):
+            return next(self._lines, '')
+
+    class FakeProcess:
+        def __init__(self, lines):
+            self.stdout = FakeStdout(lines)
+            self.stdin = type('FakeStdin', (), {'write': lambda self, *args, **kwargs: None, 'flush': lambda self: None})()
+            self._poll = None
+
+        def poll(self):
+            return self._poll
+
+    wrapper = WrapperManager()
+    wrapper.process = FakeProcess([
+        'credentialHandler: {title: , message: , 2FA: true}',
+        ''
+    ])
+
+    wrapper._stream_logs()
+
+    assert wrapper.needs_2fa is True
+
+
 def test_downloader_detects_alternative_selection_prompt():
     class FakeStdout:
         def __init__(self, lines):

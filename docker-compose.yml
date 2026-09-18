@@ -10,6 +10,7 @@ services:
       - /DATA/AppData/music-download/data:/app/data
       - /DATA/AppData/music-download/downloads:/app/downloads
       - /DATA/AppData/music-download/config:/app/config
+      - /DATA/AppData/music-download/config/config.yaml:/app/apple-music-downloader/config.yaml
     environment:
       PYTHONUNBUFFERED: "1"
       FLASK_DEBUG: "0"
@@ -26,3 +27,24 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
+
+    depends_on:
+      wrapper-lite:
+        condition: service_started
+
+  wrapper-lite:
+    build:
+      context: https://github.com/WorldObservationLog/wrapper.git#lite
+      dockerfile: Dockerfile
+    image: music-download-wrapper-lite:latest
+    container_name: music-download-wrapper-lite
+    platform: linux/amd64
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - /DATA/AppData/music-download/wrapper-lite:/app/rootfs/data
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined

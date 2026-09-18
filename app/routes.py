@@ -306,12 +306,14 @@ def reconnect_offline():
 @limiter.exempt
 def submit_2fa():
     code = (request.form.get("twofa_code") or "").strip()
-    if not code:
+    if not code.isdigit() or len(code) != 6:
         return jsonify({"status": "error", "message": "Código 2FA inválido."}), 400
     save_2fa_cache(code)
     if wrapper.process and wrapper.process.poll() is None:
-        wrapper.write_input(code)
-    return jsonify({"status": "ok"})
+        if wrapper.write_input(code):
+            return jsonify({"status": "ok"})
+        return jsonify({"status": "error", "message": "Wrapper não aceitou o código."}), 409
+    return jsonify({"status": "error", "message": "Wrapper não está aguardando o código."}), 409
 
 @app.route("/submit_selection", methods=["POST"])
 @limiter.exempt
