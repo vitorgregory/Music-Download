@@ -712,8 +712,8 @@ function updateSelectionFilters(opts) {
         }
         
         // Extrair tipos
-        if (opt.type) {
-            types.add(opt.category || opt.type);
+        if (opt.kind || opt.type) {
+            types.add(opt.kind || opt.category || opt.type);
         }
     });
 
@@ -768,7 +768,7 @@ function renderSelectionList() {
 
     const filtered = selectionOptions.filter((opt) => {
         const matchesSearch = !search || `${opt.label} ${opt.extra || ''}`.toLowerCase().includes(search);
-        const matchesType = !typeFilter || opt.type === typeFilter;
+        const matchesType = !typeFilter || (opt.kind || opt.category || opt.type) === typeFilter;
         const matchesTag = !tagFilter || (opt.tags || []).includes(tagFilter);
         const matchesYear = !yearFilter || (opt.date || '').includes(yearFilter);
         return matchesSearch && matchesType && matchesTag && matchesYear;
@@ -797,7 +797,7 @@ function renderSelectionList() {
     }
 
     list.innerHTML = filtered.map(o => {
-        const category = o.category || 'unknown';
+        const category = o.kind || o.category || 'unknown';
         const categoryLabel = o.category_label || selectionCategoryLabels[category] || selectionCategoryLabels.unknown;
         const badgeColor = category === 'music_video' ? 'bg-warning text-dark' : category === 'unknown' ? 'bg-secondary' : 'bg-primary';
         const selectable = o.selectable !== false;
@@ -816,6 +816,7 @@ function renderSelectionList() {
             <td data-label="Tipo"><span class="badge ${badgeColor}" title="Tipo original: ${o.rawType || o.type || 'unknown'}">${categoryLabel}</span></td>
             <td data-label="Edição">
                 ${(o.tags||[]).map(t=>`<span class="badge tag-pill me-1">${t}</span>`).join('') || '<span class="text-muted small">—</span>'}
+                ${o.track_count != null ? `<span class="text-muted small ms-1">${o.track_count} faixa(s)</span>` : ''}
             </td>
             <td data-label="Data" class="text-muted small">${o.date || '—'}</td>
             <td data-label="Tempo" class="text-muted small">${o.duration || '—'}</td>

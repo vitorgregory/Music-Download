@@ -22,6 +22,17 @@ def test_parse_table_options():
     assert 'label' in opts[0]
 
 
+def test_parse_table_release_metadata():
+    d = DownloaderManager()
+    opts = d._parse_options([
+        "| 1 | Artist - Short Release | 2024 | 3 tracks | 12:00 | Album |"
+    ])
+
+    assert opts[0]["track_count"] == 3
+    assert opts[0]["total_duration_sec"] == 720
+    assert opts[0]["kind"] == "single"
+
+
 def test_parse_list_options():
     d = DownloaderManager()
     opts = d._parse_options(SAMPLE_LIST)

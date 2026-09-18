@@ -136,6 +136,7 @@ class ProcessManager:
                 "needs_input": self.needs_input,
                 "options": self.input_options,
                 "request_id": self.selection_id,
+                "selection_id": self.selection_id,
                 "last_output_at": getattr(self, 'last_output_at', None)
             }
 
@@ -267,6 +268,7 @@ class DownloaderManager(ProcessManager):
         ]
         self.re_date = re.compile(r"\b(\d{4}([-/.]\d{2}([-/.]\d{2})?)?)\b")
         self.re_duration = re.compile(r"\b(\d{1,2}:\d{2})\b")
+        self.re_track_count = re.compile(r"\b(\d{1,3})\s*(?:tracks?|faixas?)\b", re.IGNORECASE)
 
     def _split_table_row(self, clean):
         # Support unicode box drawing table separators (│)
@@ -288,6 +290,7 @@ class DownloaderManager(ProcessManager):
         date = ""
         kind = ""
         duration = ""
+        track_count = None
         extras = []
 
         for col in columns[1:]:
@@ -297,6 +300,10 @@ class DownloaderManager(ProcessManager):
             if not duration and self.re_duration.search(col):
                 duration = col.strip()
                 continue
+            count_match = self.re_track_count.search(col)
+            if track_count is None and count_match:
+                track_count = int(count_match.group(1))
+                continue
             if not kind and any(t in col.lower() for t in ["album", "single", "ep", "compilation", "playlist", "song", "music video", "video"]):
                 kind = col.strip()
                 continue
@@ -305,10 +312,14 @@ class DownloaderManager(ProcessManager):
         normalized = normalize_media_item({
             "id": entry_id,
             "type": kind or "unknown",
-            "attributes": {"name": label, "releaseDate": date}
+            "attributes": {
+                "name": label,
+                "releaseDate": date,
+                "track_count": track_count,
+                "duration": duration,
+            }
         })
         normalized["tags"] = analyze_label_metadata(label)["tags"]
-        normalized["duration"] = duration
         normalized["extra"] = ", ".join([e for e in extras if e])
         return normalized
 

@@ -163,7 +163,8 @@ def get_state():
             "logs": d_status["logs"],
             "needs_selection": d_status["needs_input"],
             "options": d_status["options"],
-            "request_id": d_status.get("request_id")
+            "request_id": d_status.get("request_id"),
+            "selection_id": d_status.get("selection_id")
         },
         "downloader_last_output": d_status.get('last_output_at'),
         "downloader_stalled": (True if (d_status.get('last_output_at') and (time.time() - d_status.get('last_output_at', 0) > STALL_TIMEOUT_SECONDS)) else False),
@@ -395,6 +396,7 @@ def submit_selection():
     return jsonify({
         "success": True,
         "accepted": True,
+        "selection_id": downloader.selection_id,
         "request_id": downloader.selection_id,
         "task_ids": [],
         "message": "Seleção adicionada à fila"

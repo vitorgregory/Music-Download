@@ -49,25 +49,73 @@ MEDIA_CATEGORY_LABELS = {
 }
 
 
+def _coerce_track_count(value):
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    return count if count >= 0 else None
+
+
+def _coerce_duration_seconds(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return float(value) if value >= 0 else None
+    text = str(value).strip()
+    if text.isdigit():
+        return float(text)
+    match = re.fullmatch(r"(?:(\d+):)?(\d{1,2}):(\d{2})", text)
+    if not match:
+        return None
+    hours, minutes, seconds = match.groups()
+    return int(hours or 0) * 3600 + int(minutes) * 60 + int(seconds)
+
+
+def normalize_release_type(raw_type, track_count=None, total_duration_sec=None, album_type=None):
+    """Return the canonical release kind using structural metadata only."""
+    raw_type = str(raw_type or "unknown")
+    normalized_type = raw_type.lower().replace("_", "-").replace(" ", "-")
+    album_type = str(album_type or "").lower().replace("_", "-").replace(" ", "-")
+    count = _coerce_track_count(track_count)
+    duration = _coerce_duration_seconds(total_duration_sec)
+
+    if normalized_type in {"music-video", "music-videos", "musicvideo"}:
+        return "music_video"
+    if normalized_type in {"compilation", "compilations"} or album_type == "compilation":
+        return "compilation"
+    if normalized_type in {"playlist", "playlists"}:
+        return "playlist"
+    if normalized_type in {"song", "songs", "track", "tracks"}:
+        return "song"
+    if album_type in {"single", "ep", "album", "compilation"}:
+        return album_type
+    if normalized_type not in {"album", "albums"}:
+        return "unknown"
+    if count is None and duration is None:
+        return "unknown"
+    if (count is not None and count >= 7) or (duration is not None and duration >= 1800):
+        return "album"
+    if count is not None and 4 <= count <= 6 and (duration is None or duration < 1800):
+        return "ep"
+    if count is not None and 1 <= count <= 3 and (duration is None or duration < 1800):
+        return "single"
+    return "unknown"
+
+
 def normalize_media_item(raw_item, endpoint_type=None):
     """Normalize an Apple Music resource without guessing from its title."""
     raw_item = raw_item if isinstance(raw_item, dict) else {}
     attributes = raw_item.get("attributes") if isinstance(raw_item.get("attributes"), dict) else raw_item
     raw_type = raw_item.get("type") or endpoint_type or attributes.get("type") or "unknown"
     raw_type = str(raw_type)
-    normalized_type = raw_type.lower().replace("_", "-").replace(" ", "-")
-    album_type = str(attributes.get("albumType") or attributes.get("album_type") or "").lower()
-
-    if normalized_type in {"music-videos", "music-video", "musicvideo"} or endpoint_type in {"music-videos", "music_video"}:
-        category = "music_video"
-    elif normalized_type in {"albums", "album"}:
-        category = {"single": "single", "ep": "ep", "compilation": "compilation"}.get(album_type, "album")
-    elif normalized_type in {"playlists", "playlist"}:
-        category = "playlist"
-    elif normalized_type in {"songs", "song", "tracks", "track"}:
-        category = "song"
-    else:
-        category = "unknown"
+    track_count = attributes.get("trackCount", attributes.get("track_count"))
+    duration = attributes.get("totalDurationSec", attributes.get("total_duration_sec"))
+    duration = attributes.get("duration", duration)
+    album_type = attributes.get("albumType", attributes.get("album_type"))
+    category = normalize_release_type(raw_type, track_count, duration, album_type)
+    track_count = _coerce_track_count(track_count)
+    duration_seconds = _coerce_duration_seconds(duration)
 
     artwork = attributes.get("artwork")
     artwork_url = artwork.get("url") if isinstance(artwork, dict) else attributes.get("artworkUrl")
@@ -81,6 +129,7 @@ def normalize_media_item(raw_item, endpoint_type=None):
     return {
         "id": str(raw_item.get("id") or attributes.get("id") or ""),
         "type": category,
+        "kind": category,
         "category": category,
         "category_label": MEDIA_CATEGORY_LABELS[category],
         "title": title,
@@ -93,7 +142,10 @@ def normalize_media_item(raw_item, endpoint_type=None):
         "artworkUrl": artwork_url or "",
         "isVideo": category == "music_video",
         "isAudio": category in {"album", "single", "ep", "compilation", "playlist", "song"},
-        "selectable": category != "unknown",
+        "selectable": bool(raw_item.get("id") or attributes.get("id")),
+        "track_count": track_count,
+        "total_duration_sec": duration_seconds,
+        "duration": duration or "",
         "rawType": raw_type,
         "raw_type": raw_type,
     }
@@ -158,12 +210,8 @@ def validate_config_payload(payload):
 
 def analyze_label_metadata(raw_label):
     clean_label = raw_label.strip()
-    release_type = "Album" # Padrão
-    tags = []
-
     release_type = "Unknown"
-
-
+    tags = []
 
     # Detecta Tags Extras (Edições)
     if re.search(r'Deluxe', clean_label, re.IGNORECASE): tags.append("Deluxe")
