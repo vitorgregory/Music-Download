@@ -29,10 +29,14 @@ Garanta que a opção "Read and write permissions" esteja habilitada para o work
 
 O workflow usa as credenciais automáticas do GitHub:
 
-- `github.actor`
+- `github.repository_owner`
 - `${{ secrets.GITHUB_TOKEN }}`
 
 Não é necessário criar um secret manual para o registry em workflows públicos simples, porque o GitHub gera `GITHUB_TOKEN` automaticamente para o repositório. Para pacotes privados, pode ser necessário ajustar permissões.
+
+Se o pacote `music-download` já existir no GHCR e o `GITHUB_TOKEN` falhar com `permission_denied: read_package`, crie um classic personal access token com `read:packages` e `write:packages` e salve-o no repositório como `GHCR_TOKEN`. O workflow usa esse token automaticamente quando ele existe. O usuário do token precisa ter permissão de escrita no pacote.
+
+Também é possível manter o `GITHUB_TOKEN`: na página do pacote no GHCR, abra **Package settings**, habilite **Manage Actions access** e adicione este repositório. Em **Settings > Actions > General**, deixe **Workflow permissions** como **Read and write permissions**.
 
 > Observação: em repositórios privados, o pacote no GHCR pode exigir acesso explícito para puxar a imagem em outros ambientes.
 
