@@ -1,4 +1,4 @@
-# Dockerfile para Music-Download
+# Dockerfile para music-download
 # Usa a imagem oficial do wrapper como fonte do executável e do ambiente rootfs, conforme a estrutura validada em ghcr.io/itouakirai/wrapper:x86.
 FROM ghcr.io/itouakirai/wrapper:x86 AS wrapper
 

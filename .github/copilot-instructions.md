@@ -1,11 +1,11 @@
-# Music-Download v6 - AI Coding Instructions
+# music-download v6 - AI Coding Instructions
 
 ## Purpose
 Provide actionable guidance for AI agents to be immediately productive in this Flask + Go + SQLite codebase.
 
 ## Big Picture
 
-**Music-Download** is a Docker-first web application orchestrating Apple Music downloads in multiple formats (ALAC, AAC, Atmos). It acts as a controller for two external Go tools and manages a persistent download queue with retry logic.
+**music-download** is a Docker-first web application orchestrating Apple Music downloads in multiple formats (ALAC, AAC, Atmos). It acts as a controller for two external Go tools and manages a persistent download queue with retry logic.
 
 ### Architecture Overview
 ```

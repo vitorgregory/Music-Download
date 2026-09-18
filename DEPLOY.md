@@ -1,4 +1,4 @@
-# Deploy do Music-Download com GHCR + Docker Compose
+# Deploy do music-download com GHCR + Docker Compose
 
 Este guia mostra como publicar a imagem Docker da aplicação no GitHub Container Registry (GHCR) e atualizar o servidor de produção automaticamente após cada push na branch `main`.
 
@@ -89,8 +89,8 @@ docker compose version
 ### 3.2. Clonar o repositório
 
 ```bash
-git clone https://github.com/vitorgregory/Music-Download.git
-cd Music-Download
+git clone https://github.com/vitorgregory/music-download.git
+cd music-download
 ```
 
 ### 3.3. Ajustar o docker-compose.yml
@@ -183,7 +183,7 @@ Se a rota `/health` não existir, confirme a aplicação no navegador e nos logs
 No host de produção, faça:
 
 ```bash
-cd /path/to/Music-Download
+cd /path/to/music-download
 ./deploy.sh
 ```
 
